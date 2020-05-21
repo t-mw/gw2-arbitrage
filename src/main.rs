@@ -2,6 +2,7 @@ use bincode::{deserialize_from, serialize_into};
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
+use futures::{stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
@@ -12,6 +13,8 @@ const FILTER_DISCIPLINES: &[&str] = &["Artificer", "Tailor"];
 
 const MAX_PAGE_SIZE: u32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
 const TRADING_POST_COMMISSION: f32 = 0.15;
+
+const PARALLEL_REQUESTS: usize = 10;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Price {
@@ -167,33 +170,25 @@ where
         let stream = DeflateDecoder::new(file);
         deserialize_from(stream).map_err(|e| e.into())
     } else {
-        let mut items: Vec<T> = vec![];
+        let mut page_no = 0;
+        let mut page_total = 0;
 
-        let mut page_no: u32 = 0;
-        let mut page_total: u32 = 1;
+        // update page total with first request
+        let mut items: Vec<T> = request_page(url_path, page_no, &mut page_total).await?;
 
-        while page_no < page_total {
-            let url = format!(
-                "https://api.guildwars2.com/v2/{}?page={}&page_size={}",
-                url_path, page_no, MAX_PAGE_SIZE
-            );
+        // fetch remaining pages in parallel batches
+        page_no += 1;
+        let mut request_results = stream::iter((page_no..page_total).map(|page_no| async move {
+            let mut unused = 0;
+            request_page::<T>(url_path, page_no, &mut unused).await
+        }))
+        .buffered(PARALLEL_REQUESTS)
+        .collect::<Vec<Result<Vec<T>, Box<dyn std::error::Error>>>>()
+        .await;
 
-            println!("Fetching {}", url);
-            let response = reqwest::get(&url).await?;
-
-            let page_total_str = response
-                .headers()
-                .get("X-Page-Total")
-                .expect("Missing X-Page-Total header")
-                .to_str()
-                .expect("X-Page-Total header contains invalid string");
-            page_total = page_total_str.parse().unwrap_or_else(|_| {
-                panic!("X-Page-Total is an invalid integer: {}", page_total_str)
-            });
-
-            items.append(&mut response.json::<Vec<T>>().await?);
-
-            page_no += 1;
+        for result in request_results.drain(..) {
+            let mut new_items = result?;
+            items.append(&mut new_items);
         }
 
         let file = File::create(cache_path)?;
@@ -202,6 +197,36 @@ where
 
         Ok(items)
     }
+}
+
+async fn request_page<T>(
+    url_path: &str,
+    page_no: usize,
+    page_total: &mut usize,
+) -> Result<Vec<T>, Box<dyn std::error::Error>>
+where
+    T: serde::Serialize,
+    T: serde::de::DeserializeOwned,
+{
+    let url = format!(
+        "https://api.guildwars2.com/v2/{}?page={}&page_size={}",
+        url_path, page_no, MAX_PAGE_SIZE
+    );
+
+    println!("Fetching {}", url);
+    let response = reqwest::get(&url).await?;
+
+    let page_total_str = response
+        .headers()
+        .get("X-Page-Total")
+        .expect("Missing X-Page-Total header")
+        .to_str()
+        .expect("X-Page-Total header contains invalid string");
+    *page_total = page_total_str
+        .parse()
+        .unwrap_or_else(|_| panic!("X-Page-Total is an invalid integer: {}", page_total_str));
+
+    response.json::<Vec<T>>().await.map_err(|e| e.into())
 }
 
 fn paginated_cache_to_map<T, F>(mut v: Vec<T>, id_fn: F) -> HashMap<u32, T>
