@@ -76,6 +76,46 @@ struct Item {
     upgrades_from: Option<Vec<ItemUpgrade>>,
 }
 
+impl Item {
+    fn vendor_cost(&self) -> Option<i32> {
+        let name = &self.name;
+
+        if name.starts_with("Thermocatalytic")
+            || (name.starts_with("Spool of")
+                && name.ends_with("Thread")
+                && !name.starts_with("Spool of Deldrimor"))
+            || (name.ends_with("of Holding") && !name.starts_with("Supreme"))
+            || name.starts_with("Lump of")
+            || name == "Jar of Vinegar"
+            || name == "Packet of Baking Powder"
+            || name == "Jar of Vegetable Oil"
+            || name == "Packet of Salt"
+            || name == "Bag of Sugar"
+            || name == "Jug of Water"
+            || name == "Bag of Starch"
+            || name == "Bag of Flour"
+            || name == "Bottle of Soy Sauce"
+            || name == "Milling Basin"
+        {
+            if self.vendor_value > 0 {
+                // standard vendor sell price is generally buy price * 8, see:
+                //  https://forum-en.gw2archive.eu/forum/community/api/How-to-get-the-vendor-sell-price
+                Some(self.vendor_value * 8)
+            } else {
+                None
+            }
+        } else if name == "Pile of Compost Starter" {
+            Some(150)
+        } else if name == "Pile of Powdered Gelatin Mix" {
+            Some(200)
+        } else if name == "Smell-Enhancing Culture" {
+            Some(40000)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct ItemUpgrade {
     upgrade: String,
@@ -419,26 +459,9 @@ fn calculate_min_crafting_cost(
         .filter(|price| price.sells.quantity > 0)
         .map(|price| price.sells.unit_price * output_item_count);
 
-    let vendor_cost = if item
-        .filter(|item| {
-            // TODO: add exceptions for all master craftsmen materials
-            let name = &item.name;
-            name.starts_with("Thermocatalytic")
-                || (name.starts_with("Spool of")
-                    && name.ends_with("Thread")
-                    && !name.starts_with("Spool of Deldrimor"))
-                || (name.ends_with("of Holding") && !name.starts_with("Supreme"))
-                || name.starts_with("Lump of")
-        })
-        .is_some()
-    {
-        // vendor sell price is generally buy price * 8, see:
-        //  https://forum-en.gw2archive.eu/forum/community/api/How-to-get-the-vendor-sell-price
-        item.filter(|item| item.vendor_value > 0)
-            .map(|item| item.vendor_value * 8 * output_item_count)
-    } else {
-        None
-    };
+    let vendor_cost = item
+        .and_then(|item| item.vendor_cost())
+        .map(|cost| cost * output_item_count);
 
     if crafting_cost.is_none() && tp_cost.is_none() && vendor_cost.is_none() {
         panic!(format!("Missing cost for item id: {}", item_id));
