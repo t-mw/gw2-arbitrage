@@ -9,8 +9,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 
-const FILTER_DISCIPLINES: &[&str] = &["Artificer", "Tailor", "Jeweler"];
-
 const MAX_PAGE_SIZE: i32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
 const TRADING_POST_COMMISSION: f32 = 0.15;
 
@@ -191,24 +189,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let items_map = vec_to_map(items, |x| x.id);
 
     let mut profitable_items = vec![];
-    for (item_id, recipe) in &recipes_map {
-        let mut has_discipline = false;
-        for discipline in FILTER_DISCIPLINES {
-            if recipe
-                .disciplines
-                .iter()
-                .find(|s| *s == discipline)
-                .is_some()
-            {
-                has_discipline = true;
-                break;
-            }
-        }
-
-        if !has_discipline {
-            continue;
-        }
-
+    for (item_id, _) in &recipes_map {
         if let Some(crafting_cost) =
             calculate_min_crafting_cost(*item_id, &recipes_map, &tp_prices_map, &items_map)
         {
