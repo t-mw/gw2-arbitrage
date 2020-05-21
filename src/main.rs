@@ -11,7 +11,7 @@ use std::path::Path;
 
 const FILTER_DISCIPLINES: &[&str] = &["Artificer", "Tailor"];
 
-const MAX_PAGE_SIZE: u32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
+const MAX_PAGE_SIZE: i32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
 const TRADING_POST_COMMISSION: f32 = 0.15;
 
 const PARALLEL_REQUESTS: usize = 10;
@@ -25,8 +25,8 @@ struct Price {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct PriceInfo {
-    unit_price: u32,
-    quantity: u32,
+    unit_price: i32,
+    quantity: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -35,10 +35,10 @@ struct Recipe {
     #[serde(rename = "type")]
     type_name: String,
     output_item_id: u32,
-    output_item_count: u32,
-    time_to_craft_ms: u32,
+    output_item_count: i32,
+    time_to_craft_ms: i32,
     disciplines: Vec<String>,
-    min_rating: u32,
+    min_rating: i32,
     flags: Vec<String>,
     ingredients: Vec<RecipeIngredient>,
     chat_link: String,
@@ -47,7 +47,7 @@ struct Recipe {
 #[derive(Debug, Serialize, Deserialize)]
 struct RecipeIngredient {
     item_id: u32,
-    count: u32,
+    count: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -60,9 +60,9 @@ struct Item {
     #[serde(rename = "type")]
     type_name: String,
     rarity: String,
-    level: u32,
-    vendor_value: u32,
-    default_skin: Option<u32>,
+    level: i32,
+    vendor_value: i32,
+    default_skin: Option<i32>,
     flags: Vec<String>,
     game_types: Vec<String>,
     restrictions: Vec<String>,
@@ -73,7 +73,7 @@ struct Item {
 #[derive(Debug, Serialize, Deserialize)]
 struct ItemUpgrade {
     upgrade: String,
-    item_id: u32,
+    item_id: i32,
 }
 
 #[tokio::main]
@@ -243,7 +243,7 @@ where
 #[derive(Debug)]
 struct CraftingCost {
     cost: i32,
-    count: u32,
+    count: i32,
 }
 
 // Calculate the lowest cost method to obtain the given item.
@@ -289,13 +289,13 @@ fn calculate_min_crafting_cost(
             }) = ingredient_cost
             {
                 // NB: introduces small error due to integer division
-                cost += (ingredient_cost * ingredient.count as i32) / ingredient_cost_count as i32;
+                cost += (ingredient_cost * ingredient.count) / ingredient_cost_count;
             } else {
                 return None;
             }
         }
 
-        Some(cost as i32)
+        Some(cost)
     } else {
         None
     };
@@ -303,7 +303,7 @@ fn calculate_min_crafting_cost(
     let tp_cost = tp_prices_map
         .get(&item_id)
         .filter(|price| price.sells.quantity > 0)
-        .map(|price| (price.sells.unit_price * output_item_count) as i32);
+        .map(|price| price.sells.unit_price * output_item_count);
 
     let vendor_cost = if item
         .filter(|item| {
@@ -321,7 +321,7 @@ fn calculate_min_crafting_cost(
         // vendor sell price is generally buy price * 8, see:
         //  https://forum-en.gw2archive.eu/forum/community/api/How-to-get-the-vendor-sell-price
         item.filter(|item| item.vendor_value > 0)
-            .map(|item| (item.vendor_value * 8 * output_item_count) as i32)
+            .map(|item| item.vendor_value * 8 * output_item_count)
     } else {
         None
     };
