@@ -285,10 +285,11 @@ fn calculate_min_crafting_cost(
 
             if let Some(CraftingCost {
                 cost: ingredient_cost,
-                ..
+                count: ingredient_cost_count,
             }) = ingredient_cost
             {
-                cost += ingredient_cost * ingredient.count as i32;
+                // NB: introduces small error due to integer division
+                cost += (ingredient_cost * ingredient.count as i32) / ingredient_cost_count as i32;
             } else {
                 return None;
             }
@@ -317,10 +318,10 @@ fn calculate_min_crafting_cost(
         })
         .is_some()
     {
-        // vendor sell price is generally buy price * 16, see:
+        // vendor sell price is generally buy price * 8, see:
         //  https://forum-en.gw2archive.eu/forum/community/api/How-to-get-the-vendor-sell-price
         item.filter(|item| item.vendor_value > 0)
-            .map(|item| (item.vendor_value * 16 * output_item_count) as i32)
+            .map(|item| (item.vendor_value * 8 * output_item_count) as i32)
     } else {
         None
     };
