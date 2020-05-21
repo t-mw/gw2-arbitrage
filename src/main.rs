@@ -247,7 +247,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let recipe = recipes_map.get(item_id).expect("Missing recipe");
         println!(
-            "{:<40} {:<15} i{:<10} r{:<10} ~ {:<10} {:>10}c / item {:>10} items",
+            "{:<40} {:<15} i:{:<10} r:{:<10} ~ {:<10} {:>10}c / item {:>10} items",
             name,
             recipe
                 .disciplines
