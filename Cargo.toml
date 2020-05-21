@@ -1,0 +1,12 @@
+[package]
+name = "gw2-arbitrage-rs"
+version = "0.1.0"
+authors = ["Tobias Mansfield-Williams <contact@tmwhere.com>"]
+edition = "2018"
+
+[dependencies]
+bincode = "1.2.1"
+flate2 = "1.0.14"
+reqwest = { version = "0.10.4", features = ["json"] }
+serde = { version = "1.0.110", features = ["derive"] }
+tokio = { version = "0.2.21", features = ["full"] }
