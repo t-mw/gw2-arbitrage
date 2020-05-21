@@ -247,8 +247,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let recipe = recipes_map.get(item_id).expect("Missing recipe");
         println!(
-            "{:<40} i{:<10} r{:<10} ~ {:<10} {:>10}c / item {:>10} items",
+            "{:<40} {:<15} i{:<10} r{:<10} ~ {:<10} {:>10}c / item {:>10} items",
             name,
+            recipe
+                .disciplines
+                .iter()
+                .map(|s| if &s[..1] == "A" {
+                    // take 1st and 3rd characters to distinguish armorer/artificer
+                    format!("{}{}", &s[..1], &s[2..3])
+                } else {
+                    s[..1].to_string()
+                })
+                .collect::<Vec<_>>()
+                .join("/"),
             item_id,
             recipe.id,
             copper_to_string(profit.amount),
