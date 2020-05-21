@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 
-const FILTER_DISCIPLINES: &[&str] = &["Artificer", "Tailor"];
+const FILTER_DISCIPLINES: &[&str] = &["Artificer", "Tailor", "Jeweler"];
 
 const MAX_PAGE_SIZE: i32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
 const TRADING_POST_COMMISSION: f32 = 0.15;
