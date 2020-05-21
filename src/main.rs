@@ -219,7 +219,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|item| item.name.as_ref())
             .unwrap_or("???");
         println!(
-            "{:<40} i{:<10} r{:<10} ~ {:<10} ({} items)",
+            "{:<40} i{:<10} r{:<10} ~ {:<10} {:>10}c/item {:>10} items",
             name,
             item_id,
             recipes_map
@@ -227,6 +227,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map(|r| r.id)
                 .expect("Missing recipe"),
             copper_to_string(profit.amount),
+            profit.amount / profit.count,
             profit.count
         );
     }
