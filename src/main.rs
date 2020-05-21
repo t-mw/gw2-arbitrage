@@ -144,14 +144,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|item| item.name.as_ref())
             .unwrap_or("???");
         println!(
-            "{:<40} i{:<10} r{:<10} {:>10}%",
+            "{:<40} i{:<10} r{:<10} {:>10}% = {}c",
             name,
             item_id,
             recipes_map
                 .get(item_id)
                 .map(|r| r.id)
                 .expect("Missing recipe"),
-            (effective_buy_price * 100 / cost) - 100
+            (effective_buy_price * 100 / cost) - 100,
+            effective_buy_price - cost
         );
     }
 
