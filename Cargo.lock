@@ -215,6 +215,7 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "flate2",
+ "ordered-float",
  "reqwest",
  "serde",
  "tokio",
@@ -518,6 +519,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-traits"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c62be47e61d1842b9170f0fdeec8eba98e60e90e5446449a0545e5152acd7096"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "num_cpus"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -558,6 +568,15 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "ordered-float"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18869315e81473c951eb56ad5558bbc56978562d3ecfb87abb7a1e944cea4518"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]
