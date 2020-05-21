@@ -214,6 +214,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..
     } in &profitable_items
     {
+        // this can happen, presumably because of precision issues
+        if profit.count == 0 {
+            continue;
+        }
+
         let name = items_map
             .get(item_id)
             .map(|item| item.name.as_ref())
