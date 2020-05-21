@@ -23,6 +23,12 @@ struct Price {
     sells: PriceInfo,
 }
 
+impl Price {
+    fn effective_buy_price(&self) -> i32 {
+        (self.buys.unit_price as f32 * (1.0 - TRADING_POST_COMMISSION)).floor() as i32
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct PriceInfo {
     unit_price: i32,
@@ -76,6 +82,52 @@ struct ItemUpgrade {
     item_id: i32,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct ItemListings {
+    id: u32,
+    buys: Vec<Listing>,
+    sells: Vec<Listing>,
+}
+
+impl ItemListings {
+    fn calculate_profit_for(&self, crafting_cost: CraftingCost) -> ListingProfit {
+        // NB: introduces small error due to integer division
+        let unit_crafting_cost = crafting_cost.cost / crafting_cost.count;
+
+        let mut profit_amount = 0;
+        let mut profit_count = 0;
+
+        // assume buys are sorted in descending price
+        for listing in &self.buys {
+            let unit_profit = listing.effective_unit_buy_price() - unit_crafting_cost;
+            if unit_profit > 0 {
+                profit_amount += unit_profit * listing.quantity;
+                profit_count += listing.quantity;
+            } else {
+                break;
+            }
+        }
+
+        ListingProfit {
+            amount: profit_amount,
+            count: profit_count,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Listing {
+    listings: i32,
+    unit_price: i32,
+    quantity: i32,
+}
+
+impl Listing {
+    fn effective_unit_buy_price(&self) -> i32 {
+        (self.unit_price as f32 * (1.0 - TRADING_POST_COMMISSION)).floor() as i32
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let prices_path = "prices.bin";
@@ -84,7 +136,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Loading trading post prices");
     let tp_prices: Vec<Price> = ensure_paginated_cache(prices_path, "commerce/prices").await?;
-    println!("Loaded {} prices", tp_prices.len());
+    println!("Loaded {} trading post prices", tp_prices.len());
 
     println!("Loading recipes");
     let recipes: Vec<Recipe> = ensure_paginated_cache(recipes_path, "recipes").await?;
@@ -94,9 +146,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let items: Vec<Item> = ensure_paginated_cache(items_path, "items").await?;
     println!("Loaded {} items", items.len());
 
-    let tp_prices_map = paginated_cache_to_map(tp_prices, |x| x.id);
-    let recipes_map = paginated_cache_to_map(recipes, |x| x.output_item_id);
-    let items_map = paginated_cache_to_map(items, |x| x.id);
+    let tp_prices_map = vec_to_map(tp_prices, |x| x.id);
+    let recipes_map = vec_to_map(recipes, |x| x.output_item_id);
+    let items_map = vec_to_map(items, |x| x.id);
 
     let mut profitable_items = vec![];
     for (item_id, recipe) in &recipes_map {
@@ -117,46 +169,80 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
 
-        if let Some(CraftingCost { cost, count }) =
+        if let Some(crafting_cost) =
             calculate_min_crafting_cost(*item_id, &recipes_map, &tp_prices_map, &items_map)
         {
             // some items are craftable and have no listed restrictions but are still not listable on tp
             // e.g. https://api.guildwars2.com/v2/items/39417
             if let Some(tp_prices) = tp_prices_map.get(item_id) {
-                let buy_price = tp_prices.buys.unit_price * count;
-                let effective_buy_price =
-                    (buy_price as f32 * (1.0 - TRADING_POST_COMMISSION)).floor() as i32;
-
-                if effective_buy_price > cost {
-                    profitable_items.push((item_id, cost, effective_buy_price));
+                if tp_prices.effective_buy_price() * crafting_cost.count > crafting_cost.cost {
+                    profitable_items.push(ProfitableItem {
+                        id: *item_id,
+                        crafting_cost,
+                        profit: ListingProfit {
+                            amount: 0,
+                            count: 0,
+                        },
+                    });
                 }
             }
         }
     }
 
-    profitable_items.sort_unstable_by_key(|(_, cost, effective_buy_price)| {
-        ordered_float::OrderedFloat(-effective_buy_price as f32 / *cost as f32)
-    });
+    println!("Loading detailed trading post listings");
+    let profitable_item_ids = profitable_items.iter().map(|i| i.id).collect();
+    let tp_listings: Vec<ItemListings> =
+        request_item_ids("commerce/listings", &profitable_item_ids).await?;
+    println!(
+        "Loaded {} detailed trading post listings",
+        tp_listings.len()
+    );
 
-    for (item_id, cost, effective_buy_price) in &profitable_items {
+    let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
+    for item in &mut profitable_items {
+        let item_listings = tp_listings_map
+            .get(&item.id)
+            .unwrap_or_else(|| panic!("Missing cost for item id: {}", item.id));
+        item.profit = item_listings.calculate_profit_for(item.crafting_cost);
+    }
+
+    profitable_items.sort_unstable_by_key(|item| item.profit.amount);
+
+    for ProfitableItem {
+        id: item_id,
+        profit,
+        ..
+    } in &profitable_items
+    {
         let name = items_map
             .get(item_id)
             .map(|item| item.name.as_ref())
             .unwrap_or("???");
         println!(
-            "{:<40} i{:<10} r{:<10} {:>10}% = {}c",
+            "{:<40} i{:<10} r{:<10} ~ {:<10} ({} items)",
             name,
             item_id,
             recipes_map
                 .get(item_id)
                 .map(|r| r.id)
                 .expect("Missing recipe"),
-            (effective_buy_price * 100 / cost) - 100,
-            effective_buy_price - cost
+            copper_to_string(profit.amount),
+            profit.count
         );
     }
 
     Ok(())
+}
+
+struct ProfitableItem {
+    id: u32,
+    crafting_cost: CraftingCost,
+    profit: ListingProfit,
+}
+
+struct ListingProfit {
+    amount: i32,
+    count: i32,
 }
 
 async fn ensure_paginated_cache<T>(
@@ -230,7 +316,29 @@ where
     response.json::<Vec<T>>().await.map_err(|e| e.into())
 }
 
-fn paginated_cache_to_map<T, F>(mut v: Vec<T>, id_fn: F) -> HashMap<u32, T>
+async fn request_item_ids<T>(
+    url_path: &str,
+    item_ids: &Vec<u32>,
+) -> Result<Vec<T>, Box<dyn std::error::Error>>
+where
+    T: serde::Serialize,
+    T: serde::de::DeserializeOwned,
+{
+    let item_ids_str: Vec<String> = item_ids.iter().map(|id| id.to_string()).collect();
+
+    let url = format!(
+        "https://api.guildwars2.com/v2/{}?ids={}",
+        url_path,
+        item_ids_str.join(",")
+    );
+
+    println!("Fetching {}", url);
+    let response = reqwest::get(&url).await?;
+
+    response.json::<Vec<T>>().await.map_err(|e| e.into())
+}
+
+fn vec_to_map<T, F>(mut v: Vec<T>, id_fn: F) -> HashMap<u32, T>
 where
     F: Fn(&T) -> u32,
 {
@@ -241,7 +349,7 @@ where
     map
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 struct CraftingCost {
     cost: i32,
     count: i32,
@@ -340,4 +448,11 @@ fn calculate_min_crafting_cost(
         cost,
         count: output_item_count,
     })
+}
+
+fn copper_to_string(copper: i32) -> String {
+    let gold = copper % 100_00_00 / 100_00;
+    let silver = copper % 100_00 / 100;
+    let copper = copper % 100;
+    format!("{}.{}.{}g", gold, silver, copper)
 }
