@@ -229,6 +229,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     profitable_items.sort_unstable_by_key(|item| item.profit.amount);
 
+    let header = format!(
+        "{:<40} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15}",
+        "Name",
+        "Discipline",
+        "Item id",
+        "Recipe id",
+        "Total profit",
+        "Profit / item",
+        "Items required"
+    );
+    println!("{}", header);
+    println!("{}", "=".repeat(header.len()));
     for ProfitableItem {
         id: item_id,
         profit,
@@ -247,7 +259,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let recipe = recipes_map.get(item_id).expect("Missing recipe");
         println!(
-            "{:<40} {:<15} i:{:<10} r:{:<10} ~ {:<10} {:>10}c / item {:>10} items",
+            "{:<40} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15}",
             name,
             recipe
                 .disciplines
@@ -260,13 +272,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .collect::<Vec<_>>()
                 .join("/"),
-            item_id,
-            recipe.id,
-            copper_to_string(profit.amount),
-            profit.amount / profit.count,
-            profit.count
+            format!("i:{}", item_id),
+            format!("r:{}", recipe.id),
+            format!("~ {}", copper_to_string(profit.amount)),
+            format!("{} / item", profit.amount / profit.count),
+            format!("{} items", profit.count)
         );
     }
+
+    let total_profit = profitable_items.iter().map(|item| item.profit.amount).sum();
+    println!("==========");
+    println!("Total: {}", copper_to_string(total_profit));
 
     Ok(())
 }
