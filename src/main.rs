@@ -230,19 +230,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     profitable_items.sort_unstable_by_key(|item| item.profit.amount);
 
     let header = format!(
-        "{:<40} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15}",
+        "{:<40} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15}",
         "Name",
         "Discipline",
         "Item id",
         "Recipe id",
         "Total profit",
         "Profit / item",
-        "Items required"
+        "Items required",
+        "Profit on cost"
     );
     println!("{}", header);
     println!("{}", "=".repeat(header.len()));
     for ProfitableItem {
         id: item_id,
+        crafting_cost,
         profit,
         ..
     } in &profitable_items
@@ -259,7 +261,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let recipe = recipes_map.get(item_id).expect("Missing recipe");
         println!(
-            "{:<40} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15}",
+            "{:<40} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15}",
             name,
             recipe
                 .disciplines
@@ -276,7 +278,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             format!("r:{}", recipe.id),
             format!("~ {}", copper_to_string(profit.amount)),
             format!("{} / item", profit.amount / profit.count),
-            format!("{} items", profit.count)
+            format!("{} items", profit.count),
+            format!(
+                "{}%",
+                (100 * profit.amount) / ((crafting_cost.cost * profit.count) / crafting_cost.count)
+            )
         );
     }
 
