@@ -487,8 +487,8 @@ fn calculate_min_crafting_cost(
 }
 
 fn copper_to_string(copper: i32) -> String {
-    let gold = copper % 100_00_00 / 100_00;
-    let silver = copper % 100_00 / 100;
-    let copper = copper % 100;
-    format!("{}.{}.{}g", gold, silver, copper)
+    let gold = copper / 100_00;
+    let silver = (copper - gold * 100_00) / 100;
+    let copper = copper - gold * 100_00 - silver * 100;
+    format!("{}.{:02}.{:02}g", gold, silver, copper)
 }
