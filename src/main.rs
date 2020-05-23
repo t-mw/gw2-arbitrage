@@ -137,14 +137,22 @@ impl ItemListings {
         mut tp_listings_map: FxHashMap<u32, ItemListings>,
     ) -> ProfitableItem {
         let mut listing_profit = 0;
-        let mut total_crafting_cost = CraftingCost { cost: 0, count: 0 };
+        let mut total_crafting_cost = CraftingCost {
+            cost: 0,
+            count: 0,
+            from_trading_post: false,
+        };
 
-        loop {
+        let mut tp_purchases = Vec::with_capacity(512);
+        'outer: loop {
+            tp_purchases.clear();
+
             let crafting_cost = if let Some(crafting_cost) = calculate_precise_min_crafting_cost(
                 self.id,
                 recipes_map,
                 items_map,
-                &mut tp_listings_map,
+                &tp_listings_map,
+                &mut tp_purchases,
             ) {
                 crafting_cost
             } else {
@@ -158,7 +166,7 @@ impl ItemListings {
                 let buy_price = if let Some(buy_price) = self.sell() {
                     buy_price
                 } else {
-                    break;
+                    break 'outer;
                 };
 
                 let profit = buy_price - unit_crafting_cost;
@@ -168,8 +176,15 @@ impl ItemListings {
                     total_crafting_cost.cost += unit_crafting_cost;
                     total_crafting_cost.count += 1;
                 } else {
-                    break;
+                    break 'outer;
                 }
+            }
+
+            for (item_id, count) in &tp_purchases {
+                tp_listings_map
+                    .get_mut(item_id)
+                    .unwrap_or_else(|| panic!("Missing detailed prices for item id: {}", item_id))
+                    .buy(*count);
             }
         }
 
@@ -225,14 +240,28 @@ impl ItemListings {
         Some(revenue)
     }
 
-    fn lowest_sell_offer(&self, count: i32) -> Option<i32> {
-        let len = self.sells.len();
-        if len < count as usize {
-            return None;
+    fn lowest_sell_offer(&self, mut count: i32) -> Option<i32> {
+        let mut cost = 0;
+
+        for listing in self.sells.iter().rev() {
+            if listing.quantity < count {
+                count -= listing.quantity;
+                cost += listing.unit_price * listing.quantity;
+            } else {
+                cost += listing.unit_price * count;
+                count = 0;
+            }
+
+            if count == 0 {
+                break;
+            }
         }
 
-        let slice = &self.sells[len - count as usize..len];
-        Some(slice.iter().map(|listing| listing.unit_price).sum())
+        if count > 0 {
+            None
+        } else {
+            Some(cost)
+        }
     }
 }
 
@@ -301,8 +330,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tp_listings: Vec<ItemListings> =
         request_item_ids("commerce/listings", &request_listing_item_ids).await?;
     for listings in &mut tp_listings {
-        // by default sells are listed in ascending price.
-        // reverse list to allow lowest sells to be popped instead of spliced from front.
+        // by default sells are listed in ascending and buys in descending price.
+        // reverse lists to allow best offers to be popped instead of spliced from front.
+        listings.buys.reverse();
         listings.sells.reverse();
     }
     println!(
@@ -349,7 +379,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..
     } in &profitable_items
     {
-        // this can happen, presumably because of precision issues
+        // Profit may end up being 0, since potential profitable items are selected based
+        // on cached prices, but the actual profit is calculated using detailed listings and
+        // prices may have changed since they were cached.
         if crafting_cost.count == 0 {
             continue;
         }
@@ -510,6 +542,7 @@ where
 struct CraftingCost {
     cost: i32,
     count: i32,
+    from_trading_post: bool,
 }
 
 // Calculate the lowest cost method to obtain the given item, using only the current high/low tp prices.
@@ -552,6 +585,7 @@ fn calculate_estimated_min_crafting_cost(
             if let Some(CraftingCost {
                 cost: ingredient_cost,
                 count: ingredient_cost_count,
+                ..
             }) = ingredient_cost
             {
                 // NB: introduces small error due to integer division
@@ -587,6 +621,7 @@ fn calculate_estimated_min_crafting_cost(
     Some(CraftingCost {
         cost,
         count: output_item_count,
+        from_trading_post: cost == tp_cost.unwrap_or(i32::MAX),
     })
 }
 
@@ -596,12 +631,15 @@ fn calculate_precise_min_crafting_cost(
     item_id: u32,
     recipes_map: &FxHashMap<u32, Recipe>,
     items_map: &FxHashMap<u32, Item>,
-    tp_listings_map: &mut FxHashMap<u32, ItemListings>,
+    tp_listings_map: &FxHashMap<u32, ItemListings>,
+    tp_purchases: &mut Vec<(u32, i32)>,
 ) -> Option<CraftingCost> {
     let item = items_map.get(&item_id);
 
     let recipe = recipes_map.get(&item_id);
     let output_item_count = recipe.map(|recipe| recipe.output_item_count).unwrap_or(1);
+
+    let tp_purchases_ptr = tp_purchases.len();
 
     let crafting_cost = if let Some(recipe) = recipe {
         let mut cost = 0;
@@ -611,13 +649,23 @@ fn calculate_precise_min_crafting_cost(
                 recipes_map,
                 items_map,
                 tp_listings_map,
+                tp_purchases,
             );
 
             if let Some(CraftingCost {
                 cost: ingredient_cost,
                 count: ingredient_cost_count,
+                from_trading_post,
             }) = ingredient_cost
             {
+                // NB: The trading post prices won't be completely accurate, because the reductions
+                // in liquidity for ingredients are deferred until the parent recipe is fully completed.
+                // This is to allow trading post purchases to be 'rolled back' if crafting a parent
+                // item turns out to be less profitable than buying it.
+                if from_trading_post {
+                    tp_purchases.push((ingredient.item_id, ingredient.count));
+                }
+
                 // NB: introduces small error due to integer division
                 cost += (ingredient_cost * ingredient.count) / ingredient_cost_count;
             } else {
@@ -647,16 +695,14 @@ fn calculate_precise_min_crafting_cost(
         .min(tp_cost.unwrap_or(i32::MAX))
         .min(vendor_cost.unwrap_or(i32::MAX));
 
-    if cost == tp_cost.unwrap_or(i32::MAX) {
-        tp_listings_map
-            .get_mut(&item_id)
-            .unwrap_or_else(|| panic!("Missing detailed prices for item id: {}", item_id))
-            .buy(output_item_count);
+    if cost != crafting_cost.unwrap_or(i32::MAX) {
+        tp_purchases.drain(tp_purchases_ptr..);
     }
 
     Some(CraftingCost {
         cost,
         count: output_item_count,
+        from_trading_post: cost == tp_cost.unwrap_or(i32::MAX),
     })
 }
 
