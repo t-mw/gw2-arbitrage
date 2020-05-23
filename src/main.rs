@@ -3,9 +3,9 @@ use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
 use futures::{stream, StreamExt};
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
-use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 
@@ -131,9 +131,9 @@ struct ItemListings {
 impl ItemListings {
     fn calculate_crafting_profit(
         &mut self,
-        recipes_map: &HashMap<u32, Recipe>,
-        items_map: &HashMap<u32, Item>,
-        mut tp_listings_map: HashMap<u32, ItemListings>,
+        recipes_map: &FxHashMap<u32, Recipe>,
+        items_map: &FxHashMap<u32, Item>,
+        mut tp_listings_map: FxHashMap<u32, ItemListings>,
     ) -> ProfitableItem {
         let mut listing_profit = 0;
         let mut total_crafting_cost = CraftingCost { cost: 0, count: 0 };
@@ -490,11 +490,11 @@ where
     Ok(result)
 }
 
-fn vec_to_map<T, F>(mut v: Vec<T>, id_fn: F) -> HashMap<u32, T>
+fn vec_to_map<T, F>(mut v: Vec<T>, id_fn: F) -> FxHashMap<u32, T>
 where
     F: Fn(&T) -> u32,
 {
-    let mut map = HashMap::new();
+    let mut map = FxHashMap::default();
     for x in v.drain(..) {
         map.insert(id_fn(&x), x);
     }
@@ -512,9 +512,9 @@ struct CraftingCost {
 // Returns a cost and a minimum number of items that must be crafted, which may be > 1.
 fn calculate_estimated_min_crafting_cost(
     item_id: u32,
-    recipes_map: &HashMap<u32, Recipe>,
-    items_map: &HashMap<u32, Item>,
-    tp_prices_map: &HashMap<u32, Price>,
+    recipes_map: &FxHashMap<u32, Recipe>,
+    items_map: &FxHashMap<u32, Item>,
+    tp_prices_map: &FxHashMap<u32, Price>,
 ) -> Option<CraftingCost> {
     let item = items_map.get(&item_id);
 
@@ -589,9 +589,9 @@ fn calculate_estimated_min_crafting_cost(
 // the trading post.
 fn calculate_precise_min_crafting_cost(
     item_id: u32,
-    recipes_map: &HashMap<u32, Recipe>,
-    items_map: &HashMap<u32, Item>,
-    tp_listings_map: &mut HashMap<u32, ItemListings>,
+    recipes_map: &FxHashMap<u32, Recipe>,
+    items_map: &FxHashMap<u32, Item>,
+    tp_listings_map: &mut FxHashMap<u32, ItemListings>,
 ) -> Option<CraftingCost> {
     let item = items_map.get(&item_id);
 
@@ -655,7 +655,7 @@ fn calculate_precise_min_crafting_cost(
     })
 }
 
-fn collect_ingredient_ids(item_id: u32, recipes_map: &HashMap<u32, Recipe>, ids: &mut Vec<u32>) {
+fn collect_ingredient_ids(item_id: u32, recipes_map: &FxHashMap<u32, Recipe>, ids: &mut Vec<u32>) {
     if let Some(recipe) = recipes_map.get(&item_id) {
         for ingredient in &recipe.ingredients {
             ids.push(ingredient.item_id);
