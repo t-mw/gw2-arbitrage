@@ -3,6 +3,7 @@ use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
 use futures::{stream, StreamExt};
+use num_rational::Rational32;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -135,7 +136,7 @@ impl ItemListings {
         recipes_map: &FxHashMap<u32, Recipe>,
         items_map: &FxHashMap<u32, Item>,
         mut tp_listings_map: FxHashMap<u32, ItemListings>,
-        mut purchased_ingredients: Option<&mut FxHashMap<u32, i32>>,
+        mut purchased_ingredients: Option<&mut FxHashMap<u32, Rational32>>,
     ) -> ProfitableItem {
         let mut listing_profit = 0;
         let mut total_crafting_cost = 0;
@@ -177,12 +178,14 @@ impl ItemListings {
                 tp_listings_map
                     .get_mut(item_id)
                     .unwrap_or_else(|| panic!("Missing detailed prices for item id: {}", item_id))
-                    .buy(*count);
+                    .buy(count.ceil().to_integer());
             }
 
             if let Some(purchased_ingredients) = &mut purchased_ingredients {
                 for (item_id, count) in &tp_purchases {
-                    let existing_count = purchased_ingredients.entry(*item_id).or_insert(0);
+                    let existing_count = purchased_ingredients
+                        .entry(*item_id)
+                        .or_insert(Rational32::from_integer(0));
                     *existing_count += count;
                 }
             }
@@ -334,7 +337,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         for (ingredient_id, ingredient_count) in &purchased_ingredients {
             println!(
                 "{} {}",
-                ingredient_count,
+                ingredient_count.ceil().to_integer(),
                 items_map
                     .get(ingredient_id)
                     .map(|item| item.name.as_ref())
@@ -649,7 +652,6 @@ fn calculate_estimated_min_crafting_cost(
                 ..
             }) = ingredient_cost
             {
-                // NB: introduces small error due to integer division
                 cost += ingredient_cost * ingredient.count;
             } else {
                 return None;
@@ -695,7 +697,7 @@ fn calculate_precise_min_crafting_cost(
     recipes_map: &FxHashMap<u32, Recipe>,
     items_map: &FxHashMap<u32, Item>,
     tp_listings_map: &FxHashMap<u32, ItemListings>,
-    tp_purchases: &mut Vec<(u32, i32)>,
+    tp_purchases: &mut Vec<(u32, Rational32)>,
 ) -> Option<CraftingCost> {
     let item = items_map.get(&item_id);
 
@@ -728,15 +730,16 @@ fn calculate_precise_min_crafting_cost(
                 // item turns out to be less profitable than buying it.
                 match source {
                     Source::TradingPost => {
-                        tp_purchases.push((ingredient.item_id, ingredient.count));
+                        tp_purchases.push((
+                            ingredient.item_id,
+                            Rational32::new(ingredient.count, output_item_count),
+                        ));
                     }
                     Source::Crafting => {
                         // repeat purchases of the ingredient's children
                         for i in tp_purchases_ingredient_ptr..tp_purchases.len() {
                             let (_, count) = tp_purchases[i];
-                            // calculate ingredients per output item, rounding up
-                            tp_purchases[i].1 =
-                                div_i32_ceil(count * ingredient.count, output_item_count);
+                            tp_purchases[i].1 = count * ingredient.count / output_item_count;
                         }
                     }
                     _ => (),
