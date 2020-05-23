@@ -10,6 +10,7 @@ use std::fs::File;
 use std::path::Path;
 
 const MAX_PAGE_SIZE: i32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
+const MAX_ITEM_ID_LENGTH: i32 = 200; // error returned for greater than this amount
 const TRADING_POST_COMMISSION: f32 = 0.15;
 
 const PARALLEL_REQUESTS: usize = 10;
@@ -189,6 +190,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let items_map = vec_to_map(items, |x| x.id);
 
     let mut profitable_items = vec![];
+    let mut profitable_item_ids = vec![];
+    let mut ingredient_ids = vec![];
     for (item_id, _) in &recipes_map {
         if let Some(crafting_cost) =
             calculate_min_crafting_cost(*item_id, &recipes_map, &tp_prices_map, &items_map)
@@ -205,15 +208,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             count: 0,
                         },
                     });
+
+                    profitable_item_ids.push(*item_id);
+                    collect_ingredient_ids(*item_id, &recipes_map, &mut ingredient_ids);
                 }
             }
         }
     }
 
     println!("Loading detailed trading post listings");
-    let profitable_item_ids = profitable_items.iter().map(|i| i.id).collect();
+    let mut request_listing_item_ids = vec![];
+    request_listing_item_ids.extend(&profitable_item_ids);
+    request_listing_item_ids.extend(ingredient_ids);
+    request_listing_item_ids.sort_unstable();
+    request_listing_item_ids.dedup();
+
     let tp_listings: Vec<ItemListings> =
-        request_item_ids("commerce/listings", &profitable_item_ids).await?;
+        request_item_ids("commerce/listings", &request_listing_item_ids).await?;
     println!(
         "Loaded {} detailed trading post listings",
         tp_listings.len()
@@ -383,18 +394,24 @@ where
     T: serde::Serialize,
     T: serde::de::DeserializeOwned,
 {
-    let item_ids_str: Vec<String> = item_ids.iter().map(|id| id.to_string()).collect();
+    let mut result = vec![];
 
-    let url = format!(
-        "https://api.guildwars2.com/v2/{}?ids={}",
-        url_path,
-        item_ids_str.join(",")
-    );
+    for batch in item_ids.chunks(MAX_ITEM_ID_LENGTH as usize) {
+        let item_ids_str: Vec<String> = batch.iter().map(|id| id.to_string()).collect();
 
-    println!("Fetching {}", url);
-    let response = reqwest::get(&url).await?;
+        let url = format!(
+            "https://api.guildwars2.com/v2/{}?ids={}",
+            url_path,
+            item_ids_str.join(",")
+        );
 
-    response.json::<Vec<T>>().await.map_err(|e| e.into())
+        println!("Fetching {}", url);
+        let response = reqwest::get(&url).await?;
+
+        result.append(&mut response.json::<Vec<T>>().await?);
+    }
+
+    Ok(result)
 }
 
 fn vec_to_map<T, F>(mut v: Vec<T>, id_fn: F) -> HashMap<u32, T>
@@ -490,6 +507,15 @@ fn calculate_min_crafting_cost(
         cost,
         count: output_item_count,
     })
+}
+
+fn collect_ingredient_ids(item_id: u32, recipes_map: &HashMap<u32, Recipe>, ids: &mut Vec<u32>) {
+    if let Some(recipe) = recipes_map.get(&item_id) {
+        for ingredient in &recipe.ingredients {
+            ids.push(ingredient.item_id);
+            collect_ingredient_ids(ingredient.item_id, recipes_map, ids);
+        }
+    }
 }
 
 fn copper_to_string(copper: i32) -> String {
