@@ -3,6 +3,7 @@ use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
 use futures::{stream, StreamExt};
+use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
@@ -309,16 +310,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tp_listings.len()
     );
 
-    let mut tp_listings_map = vec_to_map(tp_listings, |x| x.id);
+    let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
     let mut profitable_items: Vec<_> = profitable_item_ids
-        .iter()
+        .par_iter()
         .map(|item_id| {
-            let tp_listings_map_clone = tp_listings_map.clone();
-            let item_listings = tp_listings_map
+            let mut tp_listings_map_clone = tp_listings_map.clone();
+            let item_listings = tp_listings_map_clone
                 .get_mut(item_id)
                 .unwrap_or_else(|| panic!("Missing listings for item id: {}", item_id));
 
-            item_listings.calculate_crafting_profit(&recipes_map, &items_map, tp_listings_map_clone)
+            item_listings.calculate_crafting_profit(
+                &recipes_map,
+                &items_map,
+                tp_listings_map.clone(),
+            )
         })
         .collect();
 
