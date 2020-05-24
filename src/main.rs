@@ -17,7 +17,7 @@ const TRADING_POST_COMMISSION: f32 = 0.15;
 
 const PARALLEL_REQUESTS: usize = 10;
 
-const INCLUDE_RESTRICTED_INGREDIENTS: bool = true; // e.g. account-bound materials
+const INCLUDE_TIMEGATED_RECIPES: bool = false;
 const INCLUDE_UNREFINED_MATERIALS: bool = true; // set to false to optimize for low crafting time
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -54,6 +54,12 @@ struct Recipe {
     chat_link: String,
 }
 
+impl Recipe {
+    fn is_timegated(&self) -> bool {
+        self.output_item_id == 46740 || self.output_item_id == 46742
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct RecipeIngredient {
     item_id: u32,
@@ -84,12 +90,17 @@ impl Item {
     fn vendor_cost(&self) -> Option<i32> {
         let name = &self.name;
 
-        if name.starts_with("Thermocatalytic")
-            || (name.starts_with("Spool of")
-                && name.ends_with("Thread")
-                && !name.starts_with("Spool of Deldrimor"))
-            || (name.ends_with("of Holding") && !name.starts_with("Supreme"))
-            || name.starts_with("Lump of")
+        if name == "Thermocatalytic Reagent"
+            || name == "Spool of Jute Thread"
+            || name == "Spool of Wool Thread"
+            || name == "Spool of Cotton Thread"
+            || name == "Spool of Linen Thread"
+            || name == "Spool of Silk Thread"
+            || name == "Spool of Gossamer Thread"
+            || (name.ends_with("Rune of Holding") && !name.starts_with("Supreme"))
+            || name == "Lump of Tin"
+            || name == "Lump of Coal"
+            || name == "Lump of Primordium"
             || name == "Jar of Vinegar"
             || name == "Packet of Baking Powder"
             || name == "Jar of Vegetable Oil"
@@ -652,38 +663,35 @@ fn calculate_estimated_min_crafting_cost(
     tp_prices_map: &FxHashMap<u32, Price>,
 ) -> Option<CraftingCost> {
     let item = items_map.get(&item_id);
-
-    if let Some(item) = item {
-        if !INCLUDE_RESTRICTED_INGREDIENTS && item.is_restricted() {
-            return None;
-        }
-    }
-
     let recipe = recipes_map.get(&item_id);
     let output_item_count = recipe.map(|recipe| recipe.output_item_count).unwrap_or(1);
 
     let crafting_cost = if let Some(recipe) = recipe {
-        let mut cost = 0;
-        for ingredient in &recipe.ingredients {
-            let ingredient_cost = calculate_estimated_min_crafting_cost(
-                ingredient.item_id,
-                recipes_map,
-                items_map,
-                tp_prices_map,
-            );
+        if !INCLUDE_TIMEGATED_RECIPES && recipe.is_timegated() {
+            None
+        } else {
+            let mut cost = 0;
+            for ingredient in &recipe.ingredients {
+                let ingredient_cost = calculate_estimated_min_crafting_cost(
+                    ingredient.item_id,
+                    recipes_map,
+                    items_map,
+                    tp_prices_map,
+                );
 
-            if let Some(CraftingCost {
-                cost: ingredient_cost,
-                ..
-            }) = ingredient_cost
-            {
-                cost += ingredient_cost * ingredient.count;
-            } else {
-                return None;
+                if let Some(CraftingCost {
+                    cost: ingredient_cost,
+                    ..
+                }) = ingredient_cost
+                {
+                    cost += ingredient_cost * ingredient.count;
+                } else {
+                    return None;
+                }
             }
-        }
 
-        Some(div_i32_ceil(cost, output_item_count))
+            Some(div_i32_ceil(cost, output_item_count))
+        }
     } else {
         None
     };
@@ -732,51 +740,55 @@ fn calculate_precise_min_crafting_cost(
     let tp_purchases_ptr = tp_purchases.len();
 
     let crafting_cost = if let Some(recipe) = recipe {
-        let mut cost = 0;
-        for ingredient in &recipe.ingredients {
-            let tp_purchases_ingredient_ptr = tp_purchases.len();
+        if !INCLUDE_TIMEGATED_RECIPES && recipe.is_timegated() {
+            None
+        } else {
+            let mut cost = 0;
+            for ingredient in &recipe.ingredients {
+                let tp_purchases_ingredient_ptr = tp_purchases.len();
 
-            let ingredient_cost = calculate_precise_min_crafting_cost(
-                ingredient.item_id,
-                recipes_map,
-                items_map,
-                tp_listings_map,
-                tp_purchases,
-            );
+                let ingredient_cost = calculate_precise_min_crafting_cost(
+                    ingredient.item_id,
+                    recipes_map,
+                    items_map,
+                    tp_listings_map,
+                    tp_purchases,
+                );
 
-            if let Some(CraftingCost {
-                cost: ingredient_cost,
-                source,
-            }) = ingredient_cost
-            {
-                // NB: The trading post prices won't be completely accurate, because the reductions
-                // in liquidity for ingredients are deferred until the parent recipe is fully completed.
-                // This is to allow trading post purchases to be 'rolled back' if crafting a parent
-                // item turns out to be less profitable than buying it.
-                match source {
-                    Source::TradingPost => {
-                        tp_purchases.push((
-                            ingredient.item_id,
-                            Rational32::new(ingredient.count, output_item_count),
-                        ));
-                    }
-                    Source::Crafting => {
-                        // repeat purchases of the ingredient's children
-                        for i in tp_purchases_ingredient_ptr..tp_purchases.len() {
-                            let (_, count) = tp_purchases[i];
-                            tp_purchases[i].1 = count * ingredient.count / output_item_count;
+                if let Some(CraftingCost {
+                    cost: ingredient_cost,
+                    source,
+                }) = ingredient_cost
+                {
+                    // NB: The trading post prices won't be completely accurate, because the reductions
+                    // in liquidity for ingredients are deferred until the parent recipe is fully completed.
+                    // This is to allow trading post purchases to be 'rolled back' if crafting a parent
+                    // item turns out to be less profitable than buying it.
+                    match source {
+                        Source::TradingPost => {
+                            tp_purchases.push((
+                                ingredient.item_id,
+                                Rational32::new(ingredient.count, output_item_count),
+                            ));
                         }
+                        Source::Crafting => {
+                            // repeat purchases of the ingredient's children
+                            for i in tp_purchases_ingredient_ptr..tp_purchases.len() {
+                                let (_, count) = tp_purchases[i];
+                                tp_purchases[i].1 = count * ingredient.count / output_item_count;
+                            }
+                        }
+                        _ => (),
                     }
-                    _ => (),
+
+                    cost += ingredient_cost * ingredient.count;
+                } else {
+                    return None;
                 }
-
-                cost += ingredient_cost * ingredient.count;
-            } else {
-                return None;
             }
-        }
 
-        Some(div_i32_ceil(cost, output_item_count))
+            Some(div_i32_ceil(cost, output_item_count))
+        }
     } else {
         None
     };
