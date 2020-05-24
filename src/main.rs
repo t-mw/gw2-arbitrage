@@ -17,6 +17,7 @@ const TRADING_POST_COMMISSION: f32 = 0.15;
 
 const PARALLEL_REQUESTS: usize = 10;
 
+const INCLUDE_RESTRICTED_INGREDIENTS: bool = true; // e.g. account-bound materials
 const INCLUDE_UNREFINED_MATERIALS: bool = true; // set to false to optimize for low crafting time
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -116,6 +117,15 @@ impl Item {
         } else {
             None
         }
+    }
+
+    fn is_restricted(&self) -> bool {
+        self.flags
+            .iter()
+            .find(|flag| {
+                *flag == "NoSell" || *flag == "AccountBound" || *flag == "SoulbindOnAcquire"
+            })
+            .is_some()
     }
 }
 
@@ -366,6 +376,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut profitable_item_ids = vec![];
     let mut ingredient_ids = vec![];
     for (item_id, _) in &recipes_map {
+        if let Some(item) = items_map.get(item_id) {
+            // we cannot sell restricted items
+            if item.is_restricted() {
+                continue;
+            }
+        }
+
         if let Some(crafting_cost) = calculate_estimated_min_crafting_cost(
             *item_id,
             &recipes_map,
@@ -637,14 +654,7 @@ fn calculate_estimated_min_crafting_cost(
     let item = items_map.get(&item_id);
 
     if let Some(item) = item {
-        if item
-            .flags
-            .iter()
-            .find(|flag| {
-                *flag == "NoSell" || *flag == "AccountBound" || *flag == "SoulbindOnAcquire"
-            })
-            .is_some()
-        {
+        if !INCLUDE_RESTRICTED_INGREDIENTS && item.is_restricted() {
             return None;
         }
     }
@@ -686,7 +696,7 @@ fn calculate_estimated_min_crafting_cost(
     let vendor_cost = item.and_then(|item| item.vendor_cost()).map(|cost| cost);
 
     if crafting_cost.is_none() && tp_cost.is_none() && vendor_cost.is_none() {
-        panic!(format!("Missing cost for item id: {}", item_id));
+        return None;
     }
 
     let cost = crafting_cost
