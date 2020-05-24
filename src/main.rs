@@ -17,6 +17,8 @@ const TRADING_POST_COMMISSION: f32 = 0.15;
 
 const PARALLEL_REQUESTS: usize = 10;
 
+const INCLUDE_UNREFINED_MATERIALS: bool = true; // set to false to optimize for low crafting time
+
 #[derive(Debug, Serialize, Deserialize)]
 struct Price {
     id: u32,
@@ -245,6 +247,19 @@ impl ItemListings {
     }
 
     fn lowest_sell_offer(&self, mut count: i32) -> Option<i32> {
+        if !INCLUDE_UNREFINED_MATERIALS
+            && (self.id == 19729
+                || self.id == 19748
+                || self.id == 19700
+                || self.id == 19722
+                || self.id == 19702
+                || self.id == 19699
+                || self.id == 19697
+                || self.id == 89140)
+        {
+            return None;
+        }
+
         let mut cost = 0;
 
         for listing in self.sells.iter().rev() {
