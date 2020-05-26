@@ -169,10 +169,12 @@ impl ItemListings {
         let mut listing_profit = 0;
         let mut total_crafting_cost = 0;
         let mut crafting_count = 0;
+        let mut total_crafting_steps = Rational32::from_integer(0);
 
         let mut tp_purchases = Vec::with_capacity(512);
         loop {
             tp_purchases.clear();
+            let mut crafting_steps = Rational32::from_integer(0);
 
             let crafting_cost = if let Some(crafting_cost) = calculate_precise_min_crafting_cost(
                 self.id,
@@ -180,6 +182,7 @@ impl ItemListings {
                 items_map,
                 &tp_listings_map,
                 &mut tp_purchases,
+                &mut crafting_steps,
             ) {
                 crafting_cost
             } else {
@@ -206,7 +209,8 @@ impl ItemListings {
                 tp_listings_map
                     .get_mut(item_id)
                     .unwrap_or_else(|| panic!("Missing detailed prices for item id: {}", item_id))
-                    .buy(count.ceil().to_integer());
+                    .buy(count.ceil().to_integer())
+                    .unwrap();
             }
 
             if let Some(purchased_ingredients) = &mut purchased_ingredients {
@@ -217,11 +221,14 @@ impl ItemListings {
                     *existing_count += count;
                 }
             }
+
+            total_crafting_steps += crafting_steps;
         }
 
         ProfitableItem {
             id: self.id,
             crafting_cost: total_crafting_cost,
+            crafting_steps: total_crafting_steps,
             profit: listing_profit,
             count: crafting_count,
         }
@@ -449,21 +456,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     profitable_items.sort_unstable_by_key(|item| item.profit);
 
     let header = format!(
-        "{:<40} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15}",
+        "{:<40} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15} {:>15} {:>15}",
         "Name",
         "Discipline",
         "Item id",
         "Recipe id",
         "Total profit",
-        "Profit / item",
         "Items required",
-        "Profit on cost"
+        "Profit / item",
+        "Crafting steps",
+        "Profit / step",
+        "Profit on cost",
     );
     println!("{}", header);
     println!("{}", "=".repeat(header.len()));
     for ProfitableItem {
         id: item_id,
         crafting_cost,
+        crafting_steps,
         count,
         profit,
         ..
@@ -483,7 +493,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let recipe = recipes_map.get(&item_id).expect("Missing recipe");
         println!(
-            "{:<40} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15}",
+            "{:<40} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15} {:>15} {:>15}",
             name,
             recipe
                 .disciplines
@@ -499,8 +509,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             format!("i:{}", item_id),
             format!("r:{}", recipe.id),
             format!("~ {}", copper_to_string(*profit)),
-            format!("{} / item", profit / count),
             format!("{} items", count),
+            format!("{} / item", profit / count),
+            format!("{} steps", crafting_steps.ceil().to_integer()),
+            format!(
+                "{} / step",
+                (Rational32::from_integer(*profit) / crafting_steps)
+                    .floor()
+                    .to_integer()
+            ),
             format!("{}%", (100 * profit) / crafting_cost)
         );
     }
@@ -515,6 +532,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 struct ProfitableItem {
     id: u32,
     crafting_cost: i32,
+    crafting_steps: Rational32,
     count: i32,
     profit: i32,
 }
@@ -736,6 +754,7 @@ fn calculate_precise_min_crafting_cost(
     items_map: &FxHashMap<u32, Item>,
     tp_listings_map: &FxHashMap<u32, ItemListings>,
     tp_purchases: &mut Vec<(u32, Rational32)>,
+    crafting_steps: &mut Rational32,
 ) -> Option<CraftingCost> {
     let item = items_map.get(&item_id);
 
@@ -743,6 +762,7 @@ fn calculate_precise_min_crafting_cost(
     let output_item_count = recipe.map(|recipe| recipe.output_item_count).unwrap_or(1);
 
     let tp_purchases_ptr = tp_purchases.len();
+    let crafting_steps_before = *crafting_steps;
 
     let crafting_cost = if let Some(recipe) = recipe {
         if !INCLUDE_TIMEGATED_RECIPES && recipe.is_timegated() {
@@ -751,6 +771,7 @@ fn calculate_precise_min_crafting_cost(
             let mut cost = 0;
             for ingredient in &recipe.ingredients {
                 let tp_purchases_ingredient_ptr = tp_purchases.len();
+                let crafting_steps_before_ingredient = *crafting_steps;
 
                 let ingredient_cost = calculate_precise_min_crafting_cost(
                     ingredient.item_id,
@@ -758,6 +779,7 @@ fn calculate_precise_min_crafting_cost(
                     items_map,
                     tp_listings_map,
                     tp_purchases,
+                    crafting_steps,
                 );
 
                 if let Some(CraftingCost {
@@ -782,6 +804,11 @@ fn calculate_precise_min_crafting_cost(
                                 let (_, count) = tp_purchases[i];
                                 tp_purchases[i].1 = count * ingredient.count / output_item_count;
                             }
+
+                            *crafting_steps = crafting_steps_before_ingredient
+                                + (*crafting_steps - crafting_steps_before_ingredient)
+                                    * ingredient.count
+                                    / output_item_count;
                         }
                         _ => (),
                     }
@@ -823,6 +850,11 @@ fn calculate_precise_min_crafting_cost(
 
     if source != Source::Crafting {
         tp_purchases.drain(tp_purchases_ptr..);
+        *crafting_steps = crafting_steps_before;
+    } else {
+        // increment crafting steps here, so that the final item
+        // itself is also included in the crafting step count.
+        *crafting_steps += Rational32::new(1, output_item_count);
     }
 
     Some(CraftingCost { cost, source })
