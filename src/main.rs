@@ -337,10 +337,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let recipes_path = "recipes.bin";
     let items_path = "items.bin";
 
-    println!("Loading trading post prices");
-    let tp_prices: Vec<Price> = ensure_paginated_cache(prices_path, "commerce/prices").await?;
-    println!("Loaded {} trading post prices", tp_prices.len());
-
     println!("Loading recipes");
     let recipes: Vec<Recipe> = ensure_paginated_cache(recipes_path, "recipes").await?;
     println!("Loaded {} recipes", recipes.len());
@@ -349,7 +345,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let items: Vec<Item> = ensure_paginated_cache(items_path, "items").await?;
     println!("Loaded {} items", items.len());
 
-    let tp_prices_map = vec_to_map(tp_prices, |x| x.id);
     let recipes_map = vec_to_map(recipes, |x| x.output_item_id);
     let items_map = vec_to_map(items, |x| x.id);
 
@@ -396,6 +391,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         return Ok(());
     }
+
+    println!("Loading trading post prices");
+    let tp_prices: Vec<Price> = ensure_paginated_cache(prices_path, "commerce/prices").await?;
+    println!("Loaded {} trading post prices", tp_prices.len());
+
+    let tp_prices_map = vec_to_map(tp_prices, |x| x.id);
 
     let mut profitable_item_ids = vec![];
     let mut ingredient_ids = vec![];
