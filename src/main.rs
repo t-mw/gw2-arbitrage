@@ -1,4 +1,5 @@
 use bincode::{deserialize_from, serialize_into};
+use colored::Colorize;
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
@@ -455,6 +456,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     profitable_items.sort_unstable_by_key(|item| item.profit);
 
+    let mut line_colors = [
+        colored::Color::Red,
+        colored::Color::Green,
+        colored::Color::Yellow,
+        colored::Color::Magenta,
+        colored::Color::Cyan,
+    ]
+    .iter()
+    .cycle();
+
     let header = format!(
         "{:<40} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15} {:>15} {:>15}",
         "Name",
@@ -492,7 +503,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap_or("???");
 
         let recipe = recipes_map.get(&item_id).expect("Missing recipe");
-        println!(
+        let line = format!(
             "{:<40} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15} {:>15} {:>15}",
             name,
             recipe
@@ -520,6 +531,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ),
             format!("{}%", (100 * profit) / crafting_cost)
         );
+
+        println!("{}", line.color(*line_colors.next().unwrap()));
     }
 
     let total_profit = profitable_items.iter().map(|item| item.profit).sum();

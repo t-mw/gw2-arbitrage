@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 bincode = "1.2.1"
+colored = "1.9.3"
 flate2 = "1.0.14"
 ordered-float = "1.0.2"
 futures = "0.3.5"
