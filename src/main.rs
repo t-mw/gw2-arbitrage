@@ -112,6 +112,9 @@ impl Item {
             || name == "Bag of Flour"
             || name == "Bottle of Soy Sauce"
             || name == "Milling Basin"
+            || name == "Crystalline Bottle"
+            || name == "Bag of Mortar"
+            || name == "Essence of Elegance"
         {
             if self.vendor_value > 0 {
                 // standard vendor sell price is generally buy price * 8, see:
