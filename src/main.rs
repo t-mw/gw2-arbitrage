@@ -487,7 +487,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .cycle();
 
     let header = format!(
-        "{:<40} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15} {:>15} {:>15}",
+        "{:<50} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15} {:>15} {:>15}",
         "Name",
         "Discipline",
         "Item id",
@@ -524,7 +524,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let recipe = recipes_map.get(&item_id).expect("Missing recipe");
         let line = format!(
-            "{:<40} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15} {:>15} {:>15}",
+            "{:<50} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15} {:>15} {:>15}",
             name,
             recipe
                 .disciplines
