@@ -20,6 +20,7 @@ const PARALLEL_REQUESTS: usize = 10;
 
 const INCLUDE_TIMEGATED_RECIPES: bool = false;
 const INCLUDE_UNREFINED_MATERIALS: bool = true; // set to false to optimize for low crafting time
+const INCLUDE_COMMON_ASCENDED_MATERIALS: bool = true; // i.e. pile of bloodstone dust, dragonite ore, empyreal fragment
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Price {
@@ -89,6 +90,10 @@ struct Item {
 
 impl Item {
     fn vendor_cost(&self) -> Option<i32> {
+        if INCLUDE_COMMON_ASCENDED_MATERIALS && self.is_common_ascended_material() {
+            return Some(0);
+        }
+
         let name = &self.name;
 
         if name == "Thermocatalytic Reagent"
@@ -146,6 +151,11 @@ impl Item {
                     *flag == "NoSell" || *flag == "AccountBound" || *flag == "SoulbindOnAcquire"
                 })
                 .is_some()
+    }
+
+    fn is_common_ascended_material(&self) -> bool {
+        let name = &self.name;
+        name == "Empyreal Fragment" || name == "Dragonite Ore" || name == "Pile of Bloodstone Dust"
     }
 }
 
