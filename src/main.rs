@@ -16,7 +16,7 @@ const MAX_PAGE_SIZE: i32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
 const MAX_ITEM_ID_LENGTH: i32 = 200; // error returned for greater than this amount
 const TRADING_POST_COMMISSION: f32 = 0.15;
 
-const PARALLEL_REQUESTS: usize = 10;
+const PARALLEL_REQUESTS: usize = 25;
 
 const INCLUDE_TIMEGATED_RECIPES: bool = false; // e.g. deldrimor steel ingot
 const INCLUDE_UNREFINED_MATERIALS: bool = true; // set to false to optimize for low crafting time
