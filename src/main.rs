@@ -58,7 +58,10 @@ struct Recipe {
 
 impl Recipe {
     fn is_timegated(&self) -> bool {
-        self.output_item_id == 46740 || self.output_item_id == 46742 || self.output_item_id == 46745
+        self.output_item_id == 46740
+            || self.output_item_id == 46742
+            || self.output_item_id == 46745
+            || self.output_item_id == 66917
     }
 }
 
