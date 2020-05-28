@@ -150,9 +150,7 @@ impl Item {
             || self
                 .flags
                 .iter()
-                .find(|flag| {
-                    *flag == "NoSell" || *flag == "AccountBound" || *flag == "SoulbindOnAcquire"
-                })
+                .find(|flag| *flag == "AccountBound" || *flag == "SoulbindOnAcquire")
                 .is_some()
     }
 
@@ -424,19 +422,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
+        // some items are craftable and have no listed restrictions but are still not listable on tp
+        // e.g. 39417, 79557
+        // conversely, some items have a NoSell flag but are listable on the trading post
+        // e.g. 66917
+        let tp_prices = match tp_prices_map.get(item_id) {
+            Some(tp_prices) if tp_prices.sells.quantity > 0 => tp_prices,
+            _ => continue,
+        };
+
         if let Some(crafting_cost) = calculate_estimated_min_crafting_cost(
             *item_id,
             &recipes_map,
             &items_map,
             &tp_prices_map,
         ) {
-            // some items are craftable and have no listed restrictions but are still not listable on tp
-            // e.g. https://api.guildwars2.com/v2/items/39417
-            if let Some(tp_prices) = tp_prices_map.get(item_id) {
-                if tp_prices.effective_buy_price() > crafting_cost.cost {
-                    profitable_item_ids.push(*item_id);
-                    collect_ingredient_ids(*item_id, &recipes_map, &mut ingredient_ids);
-                }
+            if tp_prices.effective_buy_price() > crafting_cost.cost {
+                profitable_item_ids.push(*item_id);
+                collect_ingredient_ids(*item_id, &recipes_map, &mut ingredient_ids);
             }
         }
     }
