@@ -181,6 +181,7 @@ impl ItemListings {
         items_map: &FxHashMap<u32, Item>,
         mut tp_listings_map: FxHashMap<u32, ItemListings>,
         mut purchased_ingredients: Option<&mut FxHashMap<u32, Rational32>>,
+        limit_count: Option<i32>,
     ) -> ProfitableItem {
         let mut listing_profit = 0;
         let mut total_crafting_cost = 0;
@@ -189,6 +190,12 @@ impl ItemListings {
 
         let mut tp_purchases = Vec::with_capacity(512);
         loop {
+            if let Some(limit_count) = limit_count {
+                if crafting_count >= limit_count {
+                    break;
+                }
+            }
+
             tp_purchases.clear();
             let mut crafting_steps = Rational32::from_integer(0);
 
@@ -368,6 +375,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let item_id: u32 = args[1].parse().expect("Failed to parse item id");
         let item = items_map.get(&item_id).expect("Item not found");
 
+        let limit_count: Option<i32> = args.get(2).and_then(|n| n.parse().ok());
+
         let mut ingredient_ids = vec![];
         collect_ingredient_ids(item_id, &recipes_map, &mut ingredient_ids);
 
@@ -389,6 +398,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &items_map,
             tp_listings_map.clone(),
             Some(&mut purchased_ingredients),
+            limit_count,
         );
 
         println!("Shopping list for {} {}", profitable_item.count, &item.name);
@@ -470,6 +480,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &recipes_map,
                 &items_map,
                 tp_listings_map.clone(),
+                None,
                 None,
             )
         })
