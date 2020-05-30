@@ -62,6 +62,7 @@ impl Recipe {
             || self.output_item_id == 46742
             || self.output_item_id == 46745
             || self.output_item_id == 66917
+            || self.output_item_id == 66923
     }
 }
 
