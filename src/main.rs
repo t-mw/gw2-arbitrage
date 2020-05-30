@@ -401,7 +401,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             limit_count,
         );
 
-        println!("Shopping list for {} {}", profitable_item.count, &item.name);
+        println!(
+            "Shopping list for {} x {} = {} profit ({} / step)",
+            profitable_item.count,
+            &item.name,
+            copper_to_string(profitable_item.profit),
+            profitable_item.profit_per_crafting_step()
+        );
         println!("============");
         for (ingredient_id, ingredient_count) in &purchased_ingredients {
             println!(
@@ -513,22 +519,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("{}", header);
     println!("{}", "=".repeat(header.len()));
-    for ProfitableItem {
-        id: item_id,
-        crafting_cost,
-        crafting_steps,
-        count,
-        profit,
-        ..
-    } in &profitable_items
-    {
+    for profitable_item in &profitable_items {
         // Profit may end up being 0, since potential profitable items are selected based
         // on cached prices, but the actual profit is calculated using detailed listings and
         // prices may have changed since they were cached.
-        if *count == 0 {
+        if profitable_item.count == 0 {
             continue;
         }
 
+        let item_id = profitable_item.id;
         let name = items_map
             .get(&item_id)
             .map(|item| item.name.as_ref())
@@ -551,17 +550,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .join("/"),
             format!("i:{}", item_id),
             format!("r:{}", recipe.id),
-            format!("~ {}", copper_to_string(*profit)),
-            format!("{} items", count),
-            format!("{} / item", profit / count),
-            format!("{} steps", crafting_steps.ceil().to_integer()),
+            format!("~ {}", copper_to_string(profitable_item.profit)),
+            format!("{} items", profitable_item.count),
+            format!("{} / item", profitable_item.profit_per_item()),
             format!(
-                "{} / step",
-                (Rational32::from_integer(*profit) / crafting_steps)
-                    .floor()
-                    .to_integer()
+                "{} steps",
+                profitable_item.crafting_steps.ceil().to_integer()
             ),
-            format!("{}%", (100 * profit) / crafting_cost)
+            format!("{} / step", profitable_item.profit_per_crafting_step()),
+            format!("{}%", profitable_item.profit_on_cost())
         );
 
         println!("{}", line.color(*line_colors.next().unwrap()));
@@ -580,6 +577,22 @@ struct ProfitableItem {
     crafting_steps: Rational32,
     count: i32,
     profit: i32,
+}
+
+impl ProfitableItem {
+    fn profit_per_item(&self) -> i32 {
+        self.profit / self.count
+    }
+
+    fn profit_per_crafting_step(&self) -> i32 {
+        (Rational32::from_integer(self.profit) / self.crafting_steps)
+            .floor()
+            .to_integer()
+    }
+
+    fn profit_on_cost(&self) -> i32 {
+        (100 * self.profit) / self.crafting_cost
+    }
 }
 
 async fn ensure_paginated_cache<T>(
