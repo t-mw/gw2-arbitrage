@@ -341,7 +341,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "gw2-arbitrage-rs"
+name = "gw2-arbitrage"
 version = "0.1.0"
 dependencies = [
  "bincode",

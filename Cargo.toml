@@ -1,5 +1,5 @@
 [package]
-name = "gw2-arbitrage-rs"
+name = "gw2-arbitrage"
 version = "0.1.0"
 authors = ["Tobias Mansfield-Williams <contact@tmwhere.com>"]
 edition = "2018"
