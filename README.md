@@ -4,6 +4,8 @@ Finds items in Guild Wars 2 that can be sold on the trading post for a higher pr
 
 ## Usage
 
+Install [Rust](https://www.rust-lang.org/learn/get-started).
+
 Run the binary with `cargo run --release` to produce a list of items that can be crafted and immediately resold
 for profit on the trading post using ingredients purchased from the trading post. Items with high 'profit / step'
 and 'profit on cost' values generally produce a higher return for the time invested.
