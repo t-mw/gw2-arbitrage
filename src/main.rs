@@ -355,7 +355,6 @@ impl Listing {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let prices_path = "prices.bin";
     let recipes_path = "recipes.bin";
     let items_path = "items.bin";
 
@@ -429,7 +428,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Loading trading post prices");
-    let tp_prices: Vec<Price> = ensure_paginated_cache(prices_path, "commerce/prices").await?;
+    let tp_prices: Vec<Price> = request_paginated("commerce/prices").await?;
     println!("Loaded {} trading post prices", tp_prices.len());
 
     let tp_prices_map = vec_to_map(tp_prices, |x| x.id);
@@ -613,26 +612,7 @@ where
         let stream = DeflateDecoder::new(file);
         deserialize_from(stream).map_err(|e| e.into())
     } else {
-        let mut page_no = 0;
-        let mut page_total = 0;
-
-        // update page total with first request
-        let mut items: Vec<T> = request_page(url_path, page_no, &mut page_total).await?;
-
-        // fetch remaining pages in parallel batches
-        page_no += 1;
-        let mut request_results = stream::iter((page_no..page_total).map(|page_no| async move {
-            let mut unused = 0;
-            request_page::<T>(url_path, page_no, &mut unused).await
-        }))
-        .buffered(PARALLEL_REQUESTS)
-        .collect::<Vec<Result<Vec<T>, Box<dyn std::error::Error>>>>()
-        .await;
-
-        for result in request_results.drain(..) {
-            let mut new_items = result?;
-            items.append(&mut new_items);
-        }
+        let items = request_paginated(url_path).await?;
 
         let file = File::create(cache_path)?;
         let stream = DeflateEncoder::new(file, Compression::default());
@@ -640,6 +620,35 @@ where
 
         Ok(items)
     }
+}
+
+async fn request_paginated<T>(url_path: &str) -> Result<Vec<T>, Box<dyn std::error::Error>>
+where
+    T: serde::Serialize,
+    T: serde::de::DeserializeOwned,
+{
+    let mut page_no = 0;
+    let mut page_total = 0;
+
+    // update page total with first request
+    let mut items: Vec<T> = request_page(url_path, page_no, &mut page_total).await?;
+
+    // fetch remaining pages in parallel batches
+    page_no += 1;
+    let mut request_results = stream::iter((page_no..page_total).map(|page_no| async move {
+        let mut unused = 0;
+        request_page::<T>(url_path, page_no, &mut unused).await
+    }))
+    .buffered(PARALLEL_REQUESTS)
+    .collect::<Vec<Result<Vec<T>, Box<dyn std::error::Error>>>>()
+    .await;
+
+    for result in request_results.drain(..) {
+        let mut new_items = result?;
+        items.append(&mut new_items);
+    }
+
+    Ok(items)
 }
 
 async fn request_page<T>(
