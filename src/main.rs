@@ -401,6 +401,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             limit_count,
         );
 
+        if profitable_item.profit == 0 {
+            println!("Item is not profitable to craft");
+            return Ok(());
+        }
+
         println!(
             "Shopping list for {} x {} = {} profit ({} / step)",
             profitable_item.count,
@@ -571,6 +576,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[derive(Debug)]
 struct ProfitableItem {
     id: u32,
     crafting_cost: i32,
