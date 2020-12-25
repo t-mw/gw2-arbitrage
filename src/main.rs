@@ -15,6 +15,17 @@ use std::path::Path;
 const INCLUDE_TIMEGATED_RECIPES: bool = false; // e.g. deldrimor steel ingot
 const INCLUDE_UNREFINED_MATERIALS: bool = true; // set to false to optimize for low crafting time
 const INCLUDE_COMMON_ASCENDED_MATERIALS: bool = false; // i.e. pile of bloodstone dust, dragonite ore, empyreal fragment
+const FILTER_DISCIPLINES: &[&str] = &[
+    "Armorsmith",
+    "Artificer",
+    "Chef",
+    "Huntsman",
+    "Jeweler",
+    "Leatherworker",
+    "Scribe",
+    "Tailor",
+    "Weaponsmith",
+]; // only show items craftable by these disciplines
 
 const MAX_PAGE_SIZE: i32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
 const MAX_ITEM_ID_LENGTH: i32 = 200; // error returned for greater than this amount
@@ -435,12 +446,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut profitable_item_ids = vec![];
     let mut ingredient_ids = vec![];
-    for (item_id, _) in &recipes_map {
+    for (item_id, recipe) in &recipes_map {
         if let Some(item) = items_map.get(item_id) {
             // we cannot sell restricted items
             if item.is_restricted() {
                 continue;
             }
+        }
+
+        let mut has_discipline = false;
+        for discipline in FILTER_DISCIPLINES {
+            if recipe
+                .disciplines
+                .iter()
+                .find(|s| *s == discipline)
+                .is_some()
+            {
+                has_discipline = true;
+                break;
+            }
+        }
+
+        if !has_discipline {
+            continue;
         }
 
         // some items are craftable and have no listed restrictions but are still not listable on tp
