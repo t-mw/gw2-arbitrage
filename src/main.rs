@@ -552,6 +552,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", header);
     println!("{}", "=".repeat(header.len()));
     for profitable_item in &profitable_items {
+        // Only required when prices are cached.
         // Profit may end up being 0, since potential profitable items are selected based
         // on cached prices, but the actual profit is calculated using detailed listings and
         // prices may have changed since they were cached.
@@ -779,7 +780,6 @@ enum Source {
 
 // Calculate the lowest cost method to obtain the given item, using only the current high/low tp prices.
 // This may involve a combination of crafting, trading and buying from vendors.
-// Returns a cost and a minimum number of items that must be crafted, which may be > 1.
 fn calculate_estimated_min_crafting_cost(
     item_id: u32,
     recipes_map: &FxHashMap<u32, Recipe>,
