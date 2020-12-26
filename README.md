@@ -29,7 +29,7 @@ Detailed crafting instructions for the item can be found on https://www.gw2bltc.
 
 ## Options
 
-Run `cargo run --release -- --help` to see all available additional options.
+Run `cargo run --release -- --help` to see all available options, including CSV export.
 
 ## Cache
 

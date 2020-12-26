@@ -5,13 +5,14 @@ use flate2::write::DeflateEncoder;
 use flate2::Compression;
 use futures::{stream, StreamExt};
 use num_rational::Rational32;
+use num_traits::ToPrimitive;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use structopt::StructOpt;
 
 use std::fs::File;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const FILTER_DISCIPLINES: &[&str] = &[
     "Armorsmith",
@@ -42,12 +43,39 @@ struct Opt {
     #[structopt(short = "a", long)]
     include_ascended: bool,
 
+    /// If provided, output the full list of profitable recipes to this CSV file
+    #[structopt(short, long, parse(from_os_str))]
+    output_csv: Option<PathBuf>,
+
     /// If provided, print a shopping list of ingredients for the given item id
     item_id: Option<u32>,
 
     /// If provided, limit the maximum number of items produced for a recipe
     #[structopt(short, long)]
     count: Option<i32>,
+}
+
+#[derive(Debug, Serialize)]
+struct OutputRow {
+    name: String,
+    disciplines: String,
+    item_id: u32,
+    recipe_id: u32,
+    total_profit: i32,
+    number_required: i32,
+    profit_per_item: i32,
+    crafting_steps: i32,
+    profit_per_step: i32,
+    #[serde(serialize_with = "serialize_rational32_to_f64")]
+    profit_on_cost: Rational32,
+}
+
+fn serialize_rational32_to_f64<S>(value: &Rational32, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    const PRECISION: f64 = 1000.0;
+    serializer.serialize_f64((PRECISION * value.to_f64().unwrap_or(0.0)).round() / PRECISION)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -534,6 +562,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     profitable_items.sort_unstable_by_key(|item| item.profit);
 
+    let mut csv_writer = if let Some(path) = opt.output_csv {
+        Some(csv::Writer::from_path(path)?)
+    } else {
+        None
+    };
+
     let mut line_colors = [
         colored::Color::Red,
         colored::Color::Green,
@@ -547,16 +581,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let header = format!(
         "{:<50} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15} {:>15} {:>15}",
         "Name",
-        "Discipline",
+        "Disciplines",
         "Item id",
         "Recipe id",
         "Total profit",
-        "Items required",
+        "No. required",
         "Profit / item",
         "Crafting steps",
         "Profit / step",
         "Profit on cost",
     );
+
     println!("{}", header);
     println!("{}", "=".repeat(header.len()));
     for profitable_item in &profitable_items {
@@ -575,31 +610,59 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap_or("???");
 
         let recipe = recipes_map.get(&item_id).expect("Missing recipe");
-        let line = format!(
-            "{:<50} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15} {:>15} {:>15}",
-            name,
-            recipe
+
+        let output_row = OutputRow {
+            name: name.to_string(),
+            disciplines: recipe
                 .disciplines
                 .iter()
-                .map(|s| if &s[..1] == "A" {
-                    // take 1st and 3rd characters to distinguish armorer/artificer
-                    format!("{}{}", &s[..1], &s[2..3])
-                } else {
-                    s[..1].to_string()
+                .map(|s| {
+                    if &s[..1] == "A" {
+                        // take 1st and 3rd characters to distinguish armorer/artificer
+                        format!("{}{}", &s[..1], &s[2..3])
+                    } else {
+                        s[..1].to_string()
+                    }
                 })
                 .collect::<Vec<_>>()
                 .join("/"),
-            format!("i:{}", item_id),
-            format!("r:{}", recipe.id),
-            format!("~ {}", copper_to_string(profitable_item.profit)),
-            format!("{} items", profitable_item.count),
-            format!("{} / item", profitable_item.profit_per_item()),
+            item_id,
+            recipe_id: recipe.id,
+            total_profit: profitable_item.profit,
+            number_required: profitable_item.count,
+            profit_per_item: profitable_item.profit_per_item(),
+            crafting_steps: profitable_item.crafting_steps.ceil().to_integer(),
+            profit_per_step: profitable_item.profit_per_crafting_step(),
+            profit_on_cost: profitable_item.profit_on_cost(),
+        };
+
+        if let Some(writer) = &mut csv_writer {
+            writer.serialize(&output_row)?;
+        }
+
+        let line = format!(
+            "{:<50} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15} {:>15} {:>15}",
+            output_row.name,
+            output_row.disciplines,
+            format!("{}", output_row.item_id),
+            format!("{}", output_row.recipe_id),
+            format!("{}", copper_to_string(output_row.total_profit)),
             format!(
-                "{} steps",
-                profitable_item.crafting_steps.ceil().to_integer()
+                "{} item{}",
+                output_row.number_required,
+                if output_row.number_required > 1 {
+                    "s"
+                } else {
+                    ""
+                }
             ),
-            format!("{} / step", profitable_item.profit_per_crafting_step()),
-            format!("{}%", profitable_item.profit_on_cost())
+            format!("{} / item", output_row.profit_per_item),
+            format!("{} steps", output_row.crafting_steps),
+            format!("{} / step", output_row.profit_per_step),
+            format!(
+                "{}%",
+                (output_row.profit_on_cost * 100).round().to_integer()
+            )
         );
 
         println!("{}", line.color(*line_colors.next().unwrap()));
@@ -608,6 +671,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let total_profit = profitable_items.iter().map(|item| item.profit).sum();
     println!("==========");
     println!("Total: {}", copper_to_string(total_profit));
+
+    if let Some(writer) = &mut csv_writer {
+        writer.flush()?;
+    }
 
     Ok(())
 }
@@ -632,8 +699,8 @@ impl ProfitableItem {
             .to_integer()
     }
 
-    fn profit_on_cost(&self) -> i32 {
-        (100 * self.profit) / self.crafting_cost
+    fn profit_on_cost(&self) -> Rational32 {
+        Rational32::new(self.profit, self.crafting_cost)
     }
 }
 
