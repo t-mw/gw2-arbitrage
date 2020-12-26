@@ -33,7 +33,6 @@ const TRADING_POST_COMMISSION: f32 = 0.15;
 const PARALLEL_REQUESTS: usize = 10;
 
 #[derive(StructOpt, Debug)]
-#[structopt()]
 struct Opt {
     /// Include timegated recipes such as Deldrimor Steel Ingot
     #[structopt(short = "t", long)]
