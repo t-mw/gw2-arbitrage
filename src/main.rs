@@ -451,6 +451,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
 
+        println!("============");
         println!(
             "Shopping list for {} x {} = {} profit ({} / step)",
             profitable_item.count,
@@ -668,8 +669,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", line.color(*line_colors.next().unwrap()));
     }
 
+    println!("{}", "=".repeat(header.len()));
+    println!("{}", header);
+    println!("{}", "=".repeat(header.len()));
+
     let total_profit = profitable_items.iter().map(|item| item.profit).sum();
-    println!("==========");
     println!("Total: {}", copper_to_string(total_profit));
 
     if let Some(writer) = &mut csv_writer {
