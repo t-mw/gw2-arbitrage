@@ -8,12 +8,11 @@ use num_rational::Rational32;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
+use structopt::StructOpt;
 
 use std::fs::File;
 use std::path::Path;
 
-const INCLUDE_TIMEGATED_RECIPES: bool = false; // e.g. deldrimor steel ingot
-const INCLUDE_COMMON_ASCENDED_MATERIALS: bool = false; // i.e. pile of bloodstone dust, dragonite ore, empyreal fragment
 const FILTER_DISCIPLINES: &[&str] = &[
     "Armorsmith",
     "Artificer",
@@ -31,6 +30,25 @@ const MAX_ITEM_ID_LENGTH: i32 = 200; // error returned for greater than this amo
 const TRADING_POST_COMMISSION: f32 = 0.15;
 
 const PARALLEL_REQUESTS: usize = 10;
+
+#[derive(StructOpt, Debug)]
+#[structopt()]
+struct Opt {
+    /// Include timegated recipes such as Deldrimor Steel Ingot
+    #[structopt(short = "t", long)]
+    include_timegated: bool,
+
+    /// Include recipes that require Piles of Bloodstone Dust, Dragonite Ore or Empyreal Fragments
+    #[structopt(short = "a", long)]
+    include_ascended: bool,
+
+    /// If provided, print a shopping list of ingredients for the given item id
+    item_id: Option<u32>,
+
+    /// If provided, limit the maximum number of items produced for a recipe
+    #[structopt(short, long)]
+    count: Option<i32>,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Price {
@@ -103,8 +121,8 @@ struct Item {
 }
 
 impl Item {
-    fn vendor_cost(&self) -> Option<i32> {
-        if INCLUDE_COMMON_ASCENDED_MATERIALS && self.is_common_ascended_material() {
+    fn vendor_cost(&self, opt: &Opt) -> Option<i32> {
+        if opt.include_ascended && self.is_common_ascended_material() {
             return Some(0);
         }
 
@@ -191,7 +209,7 @@ impl ItemListings {
         items_map: &FxHashMap<u32, Item>,
         mut tp_listings_map: FxHashMap<u32, ItemListings>,
         mut purchased_ingredients: Option<&mut FxHashMap<u32, Rational32>>,
-        limit_count: Option<i32>,
+        opt: &Opt,
     ) -> ProfitableItem {
         let mut listing_profit = 0;
         let mut total_crafting_cost = 0;
@@ -200,8 +218,8 @@ impl ItemListings {
 
         let mut tp_purchases = Vec::with_capacity(512);
         loop {
-            if let Some(limit_count) = limit_count {
-                if crafting_count >= limit_count {
+            if let Some(count) = opt.count {
+                if crafting_count >= count {
                     break;
                 }
             }
@@ -216,6 +234,7 @@ impl ItemListings {
                 &tp_listings_map,
                 &mut tp_purchases,
                 &mut crafting_steps,
+                opt,
             ) {
                 crafting_cost
             } else {
@@ -352,6 +371,8 @@ impl Listing {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let opt = Opt::from_args();
+
     let recipes_path = "recipes.bin";
     let items_path = "items.bin";
 
@@ -366,12 +387,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let recipes_map = vec_to_map(recipes, |x| x.output_item_id);
     let items_map = vec_to_map(items, |x| x.id);
 
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() > 1 {
-        let item_id: u32 = args[1].parse().expect("Failed to parse item id");
+    if let Some(item_id) = opt.item_id {
         let item = items_map.get(&item_id).expect("Item not found");
-
-        let limit_count: Option<i32> = args.get(2).and_then(|n| n.parse().ok());
 
         let mut ingredient_ids = vec![];
         collect_ingredient_ids(item_id, &recipes_map, &mut ingredient_ids);
@@ -394,7 +411,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &items_map,
             tp_listings_map.clone(),
             Some(&mut purchased_ingredients),
-            limit_count,
+            &Opt {
+                include_timegated: true,
+                include_ascended: true,
+                ..opt
+            },
         );
 
         if profitable_item.profit == 0 {
@@ -471,6 +492,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &recipes_map,
             &items_map,
             &tp_prices_map,
+            &opt,
         ) {
             if tp_prices.effective_buy_price() > crafting_cost.cost {
                 profitable_item_ids.push(*item_id);
@@ -505,7 +527,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &items_map,
                 tp_listings_map.clone(),
                 None,
-                None,
+                &opt,
             )
         })
         .collect();
@@ -771,13 +793,14 @@ fn calculate_estimated_min_crafting_cost(
     recipes_map: &FxHashMap<u32, Recipe>,
     items_map: &FxHashMap<u32, Item>,
     tp_prices_map: &FxHashMap<u32, Price>,
+    opt: &Opt,
 ) -> Option<CraftingCost> {
     let item = items_map.get(&item_id);
     let recipe = recipes_map.get(&item_id);
     let output_item_count = recipe.map(|recipe| recipe.output_item_count).unwrap_or(1);
 
     let crafting_cost = if let Some(recipe) = recipe {
-        if !INCLUDE_TIMEGATED_RECIPES && recipe.is_timegated() {
+        if !opt.include_timegated && recipe.is_timegated() {
             None
         } else {
             let mut cost = 0;
@@ -787,6 +810,7 @@ fn calculate_estimated_min_crafting_cost(
                     recipes_map,
                     items_map,
                     tp_prices_map,
+                    opt,
                 );
 
                 if let Some(CraftingCost {
@@ -811,7 +835,7 @@ fn calculate_estimated_min_crafting_cost(
         .filter(|price| price.sells.quantity > 0)
         .map(|price| price.sells.unit_price);
 
-    let vendor_cost = item.and_then(|item| item.vendor_cost()).map(|cost| cost);
+    let vendor_cost = item.and_then(|item| item.vendor_cost(opt)).map(|cost| cost);
 
     if crafting_cost.is_none() && tp_cost.is_none() && vendor_cost.is_none() {
         return None;
@@ -842,6 +866,7 @@ fn calculate_precise_min_crafting_cost(
     tp_listings_map: &FxHashMap<u32, ItemListings>,
     tp_purchases: &mut Vec<(u32, Rational32)>,
     crafting_steps: &mut Rational32,
+    opt: &Opt,
 ) -> Option<CraftingCost> {
     let item = items_map.get(&item_id);
 
@@ -852,7 +877,7 @@ fn calculate_precise_min_crafting_cost(
     let crafting_steps_before = *crafting_steps;
 
     let crafting_cost = if let Some(recipe) = recipe {
-        if !INCLUDE_TIMEGATED_RECIPES && recipe.is_timegated() {
+        if !opt.include_timegated && recipe.is_timegated() {
             None
         } else {
             let mut cost = 0;
@@ -867,6 +892,7 @@ fn calculate_precise_min_crafting_cost(
                     tp_listings_map,
                     tp_purchases,
                     crafting_steps,
+                    opt,
                 );
 
                 if let Some(CraftingCost {
@@ -916,7 +942,7 @@ fn calculate_precise_min_crafting_cost(
         .get(&item_id)
         .and_then(|listings| listings.lowest_sell_offer(1));
 
-    let vendor_cost = item.and_then(|item| item.vendor_cost());
+    let vendor_cost = item.and_then(|item| item.vendor_cost(opt));
 
     if crafting_cost.is_none() && tp_cost.is_none() && vendor_cost.is_none() {
         return None;

@@ -15,7 +15,7 @@ and 'profit on cost' values generally produce a higher return for the time inves
 Pass an item id as input (e.g. `cargo run --release -- 11538`) to print a shopping list for the item, which considers
 the total available liquidity for each ingredient on the trading post. By default the shopping list will assume that you
 want to produce as many copies of the item as can be profitably sold on the trading post. To limit the number of items
-that will be crafted a count may also be passed (e.g. `cargo run --release -- 11538 100` will limit the shopping list to producing 100 items).
+that will be crafted a count may also be passed (e.g. `cargo run --release -- 11538 --count 100` will limit the shopping list to producing 100 items).
 
 ![List of materials](screen2.png)
 
@@ -26,6 +26,10 @@ This is because the tool considers your effect on the market when you buy materi
 For example, after buying enough Bolts of Silk and Thread to craft 100 x Trouser Padding, you may push the price of the materials high enough that it becomes cheaper to simply buy the Trouser Padding already crafted.
 
 Detailed crafting instructions for the item can be found on https://www.gw2bltc.com.
+
+## Options
+
+Run `cargo run --release -- --help` to see all available additional options.
 
 ## Cache
 
