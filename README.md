@@ -17,23 +17,27 @@ and 'profit on cost' values generally produce a higher return for the time inves
 1. Pass an item id as input (e.g. `cargo run --release -- 11538`) to print a shopping list for the item, which considers
 the total available liquidity for each ingredient on the trading post. By default the shopping list will assume that you
 want to produce as many copies of the item as can be profitably sold on the trading post.
-
+The shopping list will not include items that should be purchased from crafting station vendors. These are always cheaper to buy from the vendor instead of the trading post.
 
     ![List of materials](screen2.png)
 
     To limit the number of items that will be crafted a count may also be passed (e.g. `cargo run --release -- 11538 --count 100` will limit the shopping list to producing 100 items).
 
-1. Detailed crafting instructions for the item can then be found on https://www.gw2bltc.com.
+1. Detailed crafting instructions for the item can then be found on https://gw2efficiency.com/crafting/calculator/.
+   To see prices that match the output of this tool select `sell price ("instant buy")` from the `Material price` dropdown, but be aware that the gw2efficiency calculator will not show accurate profits for large amounts of items due to the liquidity issue explained below.
 
 **Important**: Check that you have the recipe for the item before spending any money. Some profitable opportunities listed by the tool exist because the recipes are difficult to obtain.
-
-Note that the shopping list may contain a mix of components (e.g. Trouser Padding) and raw materials required for that component (e.g. Bolts of Silk + Thread).
-This is because the tool considers your effect on the market when you buy materials from the trading post.
-For example, after buying enough Bolts of Silk and Thread to craft 100 x Trouser Padding, you may push the price of the materials high enough that it becomes cheaper to simply buy the Trouser Padding already crafted.
 
 ## Options
 
 Run `cargo run --release -- --help` to see all available options, including CSV export.
+
+## Effects of Low Liquidity
+
+The shopping list may contain a mix of components (e.g. Trouser Padding) and raw materials required for that component (e.g. Bolts of Silk + Thread).
+This is because the tool considers your effect on the market when you buy materials from the trading post.
+For example, after buying enough Bolts of Silk and Thread to craft 100 x Trouser Padding, you may push the price of the materials high enough that it becomes cheaper to simply buy the Trouser Padding already crafted.
+Although most existing tools ignore this effect, not accounting for it results in overestimating profits when crafting large amounts of items.
 
 ## Cache
 
