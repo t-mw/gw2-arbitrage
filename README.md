@@ -14,13 +14,12 @@ and 'profit on cost' values generally produce a higher return for the time inves
 
     ![List of items](screen1.png)
 
-1. Pass an item id as input (e.g. `cargo run --release -- 11538`) to print a shopping list for the item, which considers
-the total available liquidity for each ingredient on the trading post. By default the shopping list will assume that you
-want to produce as many copies of the item as can be profitably sold on the trading post.
+1. Pass an item id as input (e.g. `cargo run --release -- 11538`) to print a shopping list for the item, which considers the total available liquidity for each ingredient on the trading post.
 The shopping list will not include items that should be purchased from crafting station vendors. These are always cheaper to buy from the vendor instead of the trading post.
 
     ![List of materials](screen2.png)
 
+    By default the shopping list will assume that you want to produce as many copies of the item as can be profitably sold on the trading post.
     To limit the number of items that will be crafted a count may also be passed (e.g. `cargo run --release -- 11538 --count 100` will limit the shopping list to producing 100 items).
 
 1. Detailed crafting instructions for the item can then be found on https://gw2efficiency.com/crafting/calculator/.
