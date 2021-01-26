@@ -9,8 +9,10 @@ Finds items in Guild Wars 2 that can be sold on the trading post for a higher pr
 1. If running Windows, open Command Prompt or PowerShell from the Start Menu. PowerShell is the better choice on Windows 7. If running Linux or MacOS, open your terminal application.
 1. Navigate to the folder using the terminal application.
 1. Run the binary with `cargo run --release` to produce a list of items that can be crafted and immediately resold
-for profit on the trading post using materials purchased from the trading post. Items with high 'profit / step'
-and 'profit on cost' values generally produce a higher return for the time invested.
+for profit on the trading post using materials purchased from the trading post.
+The prices used assume that you buy materials at the best offer and sell the crafted items at the best bid (accounting for liquidity - see [Effects of Low Liquidity](#effects-of-low-liquidity)), so the only time
+spent waiting is during crafting.
+Items with high 'profit / step' and 'profit on cost' values generally produce a higher return for the time invested.
 
     ![List of items](screen1.png)
 
@@ -36,7 +38,8 @@ Run `cargo run --release -- --help` to see all available options, including CSV 
 The shopping list may contain a mix of components (e.g. Trouser Padding) and raw materials required for that component (e.g. Bolts of Silk + Thread).
 This is because the tool considers your effect on the market when you buy materials from the trading post.
 For example, after buying enough Bolts of Silk and Thread to craft 100 x Trouser Padding, you may push the price of the materials high enough that it becomes cheaper to simply buy the Trouser Padding already crafted.
-Although most existing tools ignore this effect, not accounting for it results in overestimating profits when crafting large amounts of items.
+Similarly, the tool considers your effect on the market when you sell many items.
+Although most existing tools ignore this effect, not accounting for it results in overestimating profits when crafting and selling large amounts of items.
 
 ## Cache
 
