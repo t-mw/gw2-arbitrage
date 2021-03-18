@@ -916,10 +916,11 @@ fn calculate_estimated_min_crafting_cost(
         .min(tp_cost.unwrap_or(i32::MAX))
         .min(vendor_cost.unwrap_or(i32::MAX));
 
-    let source = if cost == crafting_cost.unwrap_or(i32::MAX) {
-        Source::Crafting
-    } else if cost == tp_cost.unwrap_or(i32::MAX) {
+    // give trading post precedence over crafting if costs are equal
+    let source = if tp_cost == Some(cost) {
         Source::TradingPost
+    } else if crafting_cost == Some(cost) {
+        Source::Crafting
     } else {
         Source::Vendor
     };
@@ -1023,10 +1024,11 @@ fn calculate_precise_min_crafting_cost(
         .min(tp_cost.unwrap_or(i32::MAX))
         .min(vendor_cost.unwrap_or(i32::MAX));
 
-    let source = if cost == crafting_cost.unwrap_or(i32::MAX) {
-        Source::Crafting
-    } else if cost == tp_cost.unwrap_or(i32::MAX) {
+    // give trading post precedence over crafting if costs are equal
+    let source = if tp_cost == Some(cost) {
         Source::TradingPost
+    } else if crafting_cost == Some(cost) {
+        Source::Crafting
     } else {
         Source::Vendor
     };
