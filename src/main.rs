@@ -906,15 +906,7 @@ fn calculate_estimated_min_crafting_cost(
         .map(|price| price.sells.unit_price);
 
     let vendor_cost = item.and_then(|item| item.vendor_cost(opt)).map(|cost| cost);
-
-    if crafting_cost.is_none() && tp_cost.is_none() && vendor_cost.is_none() {
-        return None;
-    }
-
-    let cost = crafting_cost
-        .unwrap_or(i32::MAX)
-        .min(tp_cost.unwrap_or(i32::MAX))
-        .min(vendor_cost.unwrap_or(i32::MAX));
+    let cost = tp_cost.inner_min(crafting_cost).inner_min(vendor_cost)?;
 
     // give trading post precedence over crafting if costs are equal
     let source = if tp_cost == Some(cost) {
@@ -1014,15 +1006,7 @@ fn calculate_precise_min_crafting_cost(
         .and_then(|listings| listings.lowest_sell_offer(1));
 
     let vendor_cost = item.and_then(|item| item.vendor_cost(opt));
-
-    if crafting_cost.is_none() && tp_cost.is_none() && vendor_cost.is_none() {
-        return None;
-    }
-
-    let cost = crafting_cost
-        .unwrap_or(i32::MAX)
-        .min(tp_cost.unwrap_or(i32::MAX))
-        .min(vendor_cost.unwrap_or(i32::MAX));
+    let cost = tp_cost.inner_min(crafting_cost).inner_min(vendor_cost)?;
 
     // give trading post precedence over crafting if costs are equal
     let source = if tp_cost == Some(cost) {
@@ -1065,4 +1049,21 @@ fn copper_to_string(copper: i32) -> String {
 // see: https://stackoverflow.com/questions/2745074/fast-ceiling-of-an-integer-division-in-c-c
 fn div_i32_ceil(x: i32, y: i32) -> i32 {
     (x + y - 1) / y
+}
+
+trait OptionInnerMin<T> {
+    fn inner_min(self, other: Option<T>) -> Option<T>;
+}
+
+impl<T> OptionInnerMin<T> for Option<T>
+where
+    T: Ord + Copy,
+{
+    fn inner_min(self, other: Option<T>) -> Option<T> {
+        match (self, other) {
+            (Option::Some(a), Option::Some(b)) => Option::Some(a.min(b)),
+            (Option::None, _) => other,
+            (_, Option::None) => self,
+        }
+    }
 }
