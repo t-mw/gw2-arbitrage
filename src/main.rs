@@ -29,6 +29,7 @@ const FILTER_DISCIPLINES: &[&str] = &[
 const MAX_PAGE_SIZE: i32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
 const MAX_ITEM_ID_LENGTH: i32 = 200; // error returned for greater than this amount
 const TRADING_POST_COMMISSION: f32 = 0.15;
+const ITEM_STACK_SIZE: i32 = 250; // GW2 uses a "stack size" of 250
 
 const PARALLEL_REQUESTS: usize = 10;
 
@@ -426,7 +427,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let tp_listings = fetch_item_listings(&request_listing_item_ids).await?;
         let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
 
-        let mut purchased_ingredients = FxHashMap::default();
+        let mut purchased_ingredients: FxHashMap<u32, Rational32> = Default::default();
 
         let mut tp_listings_map_clone = tp_listings_map.clone();
         let item_listings = tp_listings_map_clone
@@ -459,10 +460,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             profitable_item.profit_per_crafting_step()
         );
         println!("============");
-        for (ingredient_id, ingredient_count) in &purchased_ingredients {
+        for (ingredient_id, ingredient_count_ratio) in &purchased_ingredients {
+            let ingredient_count = ingredient_count_ratio.ceil().to_integer();
+            let ingredient_count_msg = if ingredient_count > ITEM_STACK_SIZE {
+                let stack_count = ingredient_count / ITEM_STACK_SIZE;
+                let remainder = ingredient_count % ITEM_STACK_SIZE;
+                let remainder_msg = if remainder != 0 {
+                    format!(" + {}", remainder)
+                } else {
+                    "".to_string()
+                };
+                format!(
+                    "{} ({} x {}{})",
+                    ingredient_count, stack_count, ITEM_STACK_SIZE, remainder_msg
+                )
+            } else {
+                ingredient_count.to_string()
+            };
             println!(
                 "{} {}",
-                ingredient_count.ceil().to_integer(),
+                ingredient_count_msg,
                 items_map
                     .get(ingredient_id)
                     .map(|item| item.name.as_ref())
