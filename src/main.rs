@@ -113,12 +113,25 @@ struct Recipe {
 }
 
 impl Recipe {
+    // see https://wiki.guildwars2.com/wiki/Category:Time_gated_recipes
+    // for a list of time gated recipes
+    // I've left Charged Quartz Crystals off the list, since they can
+    // drop from containers.
     fn is_timegated(&self) -> bool {
-        self.output_item_id == 46740
-            || self.output_item_id == 46742
-            || self.output_item_id == 46745
-            || self.output_item_id == 66917
-            || self.output_item_id == 66923
+        self.output_item_id == 46740         // Spool of Silk Weaving Thread
+            || self.output_item_id == 46742  // Lump of Mithrillium
+            || self.output_item_id == 46744  // Glob of Elder Spirit Residue
+            || self.output_item_id == 46745  // Spool of Thick Elonian Cord
+            || self.output_item_id == 66913  // Clay Pot
+            || self.output_item_id == 66917  // Plate of Meaty Plant Food
+            || self.output_item_id == 66923  // Plate of Piquant Plan Food
+            || self.output_item_id == 67015  // Heat Stone
+            || self.output_item_id == 67377  // Vial of Maize Balm
+            || self.output_item_id == 79726  // Dragon Hatchling Doll Eye
+            || self.output_item_id == 79763  // Gossamer Stuffing
+            || self.output_item_id == 79790  // Dragon Hatchling Doll Hide
+            || self.output_item_id == 79795  // Dragon Hatchling Doll Adornments
+            || self.output_item_id == 79817  // Dragon Hatchling Doll Frame
     }
 }
 
