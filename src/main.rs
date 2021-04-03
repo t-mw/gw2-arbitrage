@@ -1,18 +1,16 @@
-use bincode::{deserialize_from, serialize_into};
 use colored::Colorize;
-use flate2::read::DeflateDecoder;
-use flate2::write::DeflateEncoder;
-use flate2::Compression;
-use futures::{stream, StreamExt};
 use num_rational::Rational32;
 use num_traits::ToPrimitive;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Serialize, Serializer};
 use structopt::StructOpt;
 
-use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+
+mod api;
+mod crafting;
+mod request;
 
 const FILTER_DISCIPLINES: &[&str] = &[
     "Armorsmith",
@@ -26,12 +24,7 @@ const FILTER_DISCIPLINES: &[&str] = &[
     "Weaponsmith",
 ]; // only show items craftable by these disciplines
 
-const MAX_PAGE_SIZE: i32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
-const MAX_ITEM_ID_LENGTH: i32 = 200; // error returned for greater than this amount
-const TRADING_POST_COMMISSION: f32 = 0.15;
 const ITEM_STACK_SIZE: i32 = 250; // GW2 uses a "stack size" of 250
-
-const PARALLEL_REQUESTS: usize = 10;
 
 #[derive(StructOpt, Debug)]
 struct Opt {
@@ -78,338 +71,6 @@ where
     serializer.serialize_f64((PRECISION * value.to_f64().unwrap_or(0.0)).round() / PRECISION)
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Price {
-    id: u32,
-    buys: PriceInfo,
-    sells: PriceInfo,
-}
-
-impl Price {
-    fn effective_buy_price(&self) -> i32 {
-        (self.buys.unit_price as f32 * (1.0 - TRADING_POST_COMMISSION)).floor() as i32
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct PriceInfo {
-    unit_price: i32,
-    quantity: i32,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Recipe {
-    id: u32,
-    #[serde(rename = "type")]
-    type_name: String,
-    output_item_id: u32,
-    output_item_count: i32,
-    time_to_craft_ms: i32,
-    disciplines: Vec<String>,
-    min_rating: i32,
-    flags: Vec<String>,
-    ingredients: Vec<RecipeIngredient>,
-    chat_link: String,
-}
-
-impl Recipe {
-    // see https://wiki.guildwars2.com/wiki/Category:Time_gated_recipes
-    // for a list of time gated recipes
-    // I've left Charged Quartz Crystals off the list, since they can
-    // drop from containers.
-    fn is_timegated(&self) -> bool {
-        self.output_item_id == 46740         // Spool of Silk Weaving Thread
-            || self.output_item_id == 46742  // Lump of Mithrillium
-            || self.output_item_id == 46744  // Glob of Elder Spirit Residue
-            || self.output_item_id == 46745  // Spool of Thick Elonian Cord
-            || self.output_item_id == 66913  // Clay Pot
-            || self.output_item_id == 66917  // Plate of Meaty Plant Food
-            || self.output_item_id == 66923  // Plate of Piquant Plan Food
-            || self.output_item_id == 67015  // Heat Stone
-            || self.output_item_id == 67377  // Vial of Maize Balm
-            || self.output_item_id == 79726  // Dragon Hatchling Doll Eye
-            || self.output_item_id == 79763  // Gossamer Stuffing
-            || self.output_item_id == 79790  // Dragon Hatchling Doll Hide
-            || self.output_item_id == 79795  // Dragon Hatchling Doll Adornments
-            || self.output_item_id == 79817  // Dragon Hatchling Doll Frame
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct RecipeIngredient {
-    item_id: u32,
-    count: i32,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Item {
-    id: u32,
-    chat_link: String,
-    name: String,
-    icon: Option<String>,
-    description: Option<String>,
-    #[serde(rename = "type")]
-    type_name: String,
-    rarity: String,
-    level: i32,
-    vendor_value: i32,
-    default_skin: Option<i32>,
-    flags: Vec<String>,
-    game_types: Vec<String>,
-    restrictions: Vec<String>,
-    upgrades_into: Option<Vec<ItemUpgrade>>,
-    upgrades_from: Option<Vec<ItemUpgrade>>,
-}
-
-impl Item {
-    fn vendor_cost(&self, opt: &Opt) -> Option<i32> {
-        if opt.include_ascended && self.is_common_ascended_material() {
-            return Some(0);
-        }
-
-        let name = &self.name;
-
-        if name == "Thermocatalytic Reagent"
-            || name == "Spool of Jute Thread"
-            || name == "Spool of Wool Thread"
-            || name == "Spool of Cotton Thread"
-            || name == "Spool of Linen Thread"
-            || name == "Spool of Silk Thread"
-            || name == "Spool of Gossamer Thread"
-            || (name.ends_with("Rune of Holding") && !name.starts_with("Supreme"))
-            || name == "Lump of Tin"
-            || name == "Lump of Coal"
-            || name == "Lump of Primordium"
-            || name == "Jar of Vinegar"
-            || name == "Packet of Baking Powder"
-            || name == "Jar of Vegetable Oil"
-            || name == "Packet of Salt"
-            || name == "Bag of Sugar"
-            || name == "Jug of Water"
-            || name == "Bag of Starch"
-            || name == "Bag of Flour"
-            || name == "Bottle of Soy Sauce"
-            || name == "Milling Basin"
-            || name == "Crystalline Bottle"
-            || name == "Bag of Mortar"
-            || name == "Essence of Elegance"
-        {
-            if self.vendor_value > 0 {
-                // standard vendor sell price is generally buy price * 8, see:
-                //  https://forum-en.gw2archive.eu/forum/community/api/How-to-get-the-vendor-sell-price
-                Some(self.vendor_value * 8)
-            } else {
-                None
-            }
-        } else if name == "Pile of Compost Starter" {
-            Some(150)
-        } else if name == "Pile of Powdered Gelatin Mix" {
-            Some(200)
-        } else if name == "Smell-Enhancing Culture" {
-            Some(40000)
-        } else {
-            None
-        }
-    }
-
-    fn is_restricted(&self) -> bool {
-        // 24749 == legacy Major Rune of the Air
-        // 76363 == legacy catapult schematic
-        self.id == 24749
-            || self.id == 76363
-            || self
-                .flags
-                .iter()
-                .find(|flag| *flag == "AccountBound" || *flag == "SoulbindOnAcquire")
-                .is_some()
-    }
-
-    fn is_common_ascended_material(&self) -> bool {
-        let name = &self.name;
-        name == "Empyreal Fragment" || name == "Dragonite Ore" || name == "Pile of Bloodstone Dust"
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ItemUpgrade {
-    upgrade: String,
-    item_id: i32,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct ItemListings {
-    id: u32,
-    buys: Vec<Listing>,
-    sells: Vec<Listing>,
-}
-
-impl ItemListings {
-    fn calculate_crafting_profit(
-        &mut self,
-        recipes_map: &FxHashMap<u32, Recipe>,
-        items_map: &FxHashMap<u32, Item>,
-        mut tp_listings_map: FxHashMap<u32, ItemListings>,
-        mut purchased_ingredients: Option<&mut FxHashMap<u32, Rational32>>,
-        opt: &Opt,
-    ) -> ProfitableItem {
-        let mut listing_profit = 0;
-        let mut total_crafting_cost = 0;
-        let mut crafting_count = 0;
-        let mut total_crafting_steps = Rational32::from_integer(0);
-
-        let mut tp_purchases = Vec::with_capacity(512);
-        loop {
-            if let Some(count) = opt.count {
-                if crafting_count >= count {
-                    break;
-                }
-            }
-
-            tp_purchases.clear();
-            let mut crafting_steps = Rational32::from_integer(0);
-
-            let crafting_cost = if let Some(crafting_cost) = calculate_precise_min_crafting_cost(
-                self.id,
-                recipes_map,
-                items_map,
-                &tp_listings_map,
-                &mut tp_purchases,
-                &mut crafting_steps,
-                opt,
-            ) {
-                crafting_cost
-            } else {
-                break;
-            };
-
-            let buy_price = if let Some(buy_price) = self.sell() {
-                buy_price
-            } else {
-                break;
-            };
-
-            let profit = buy_price - crafting_cost.cost;
-            if profit > 0 {
-                listing_profit += profit;
-
-                total_crafting_cost += crafting_cost.cost;
-                crafting_count += 1;
-            } else {
-                break;
-            }
-
-            for (item_id, count) in &tp_purchases {
-                tp_listings_map
-                    .get_mut(item_id)
-                    .unwrap_or_else(|| panic!("Missing detailed prices for item id: {}", item_id))
-                    .buy(count.ceil().to_integer())
-                    .unwrap();
-            }
-
-            if let Some(purchased_ingredients) = &mut purchased_ingredients {
-                for (item_id, count) in &tp_purchases {
-                    let existing_count = purchased_ingredients
-                        .entry(*item_id)
-                        .or_insert(Rational32::from_integer(0));
-                    *existing_count += count;
-                }
-            }
-
-            total_crafting_steps += crafting_steps;
-        }
-
-        ProfitableItem {
-            id: self.id,
-            crafting_cost: total_crafting_cost,
-            crafting_steps: total_crafting_steps,
-            profit: listing_profit,
-            count: crafting_count,
-        }
-    }
-
-    fn buy(&mut self, mut count: i32) -> Option<i32> {
-        let mut cost = 0;
-
-        while count > 0 {
-            // sells are sorted in descending price
-            let remove = if let Some(listing) = self.sells.last_mut() {
-                listing.quantity -= 1;
-
-                count -= 1;
-                cost += listing.unit_price;
-
-                listing.quantity == 0
-            } else {
-                return None;
-            };
-
-            if remove {
-                self.sells.pop();
-            }
-        }
-
-        Some(cost)
-    }
-
-    fn sell(&mut self) -> Option<i32> {
-        let mut revenue = 0;
-
-        // buys are sorted in ascending price
-        let remove = if let Some(listing) = self.buys.last_mut() {
-            listing.quantity -= 1;
-
-            revenue += listing.unit_price_minus_fees();
-
-            listing.quantity == 0
-        } else {
-            return None;
-        };
-
-        if remove {
-            self.buys.pop();
-        }
-
-        Some(revenue)
-    }
-
-    fn lowest_sell_offer(&self, mut count: i32) -> Option<i32> {
-        let mut cost = 0;
-
-        for listing in self.sells.iter().rev() {
-            if listing.quantity < count {
-                count -= listing.quantity;
-                cost += listing.unit_price * listing.quantity;
-            } else {
-                cost += listing.unit_price * count;
-                count = 0;
-            }
-
-            if count == 0 {
-                break;
-            }
-        }
-
-        if count > 0 {
-            None
-        } else {
-            Some(cost)
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct Listing {
-    listings: i32,
-    unit_price: i32,
-    quantity: i32,
-}
-
-impl Listing {
-    fn unit_price_minus_fees(&self) -> i32 {
-        (self.unit_price as f32 * (1.0 - TRADING_POST_COMMISSION)).floor() as i32
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opt = Opt::from_args();
@@ -418,15 +79,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let items_path = "items.bin";
 
     println!("Loading recipes");
-    let recipes: Vec<Recipe> = ensure_paginated_cache(recipes_path, "recipes").await?;
+    let recipes: Vec<api::Recipe> =
+        request::ensure_paginated_cache(recipes_path, "recipes").await?;
     println!("Loaded {} recipes", recipes.len());
 
     println!("Loading items");
-    let items: Vec<Item> = ensure_paginated_cache(items_path, "items").await?;
+    let items: Vec<api::Item> = request::ensure_paginated_cache(items_path, "items").await?;
     println!("Loaded {} items", items.len());
 
     let recipes_map = vec_to_map(recipes, |x| x.output_item_id);
     let items_map = vec_to_map(items, |x| x.id);
+
+    let crafting_options = crafting::CraftingOptions {
+        include_timegated: opt.include_timegated,
+        include_ascended: opt.include_ascended,
+        count: opt.count,
+    };
 
     if let Some(item_id) = opt.item_id {
         let item = items_map.get(&item_id).expect("Item not found");
@@ -437,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut request_listing_item_ids = vec![item_id];
         request_listing_item_ids.extend(ingredient_ids);
 
-        let tp_listings = fetch_item_listings(&request_listing_item_ids).await?;
+        let tp_listings = request::fetch_item_listings(&request_listing_item_ids).await?;
         let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
 
         let mut purchased_ingredients: FxHashMap<u32, Rational32> = Default::default();
@@ -452,10 +120,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &items_map,
             tp_listings_map.clone(),
             Some(&mut purchased_ingredients),
-            &Opt {
+            &crafting::CraftingOptions {
                 include_timegated: true,
                 include_ascended: true,
-                ..opt
+                ..crafting_options
             },
         );
 
@@ -504,7 +172,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Loading trading post prices");
-    let tp_prices: Vec<Price> = request_paginated("commerce/prices").await?;
+    let tp_prices: Vec<api::Price> = request::request_paginated("commerce/prices").await?;
     println!("Loaded {} trading post prices", tp_prices.len());
 
     let tp_prices_map = vec_to_map(tp_prices, |x| x.id);
@@ -545,12 +213,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => continue,
         };
 
-        if let Some(crafting_cost) = calculate_estimated_min_crafting_cost(
+        if let Some(crafting_cost) = crafting::calculate_estimated_min_crafting_cost(
             *item_id,
             &recipes_map,
             &items_map,
             &tp_prices_map,
-            &opt,
+            &crafting_options,
         ) {
             if tp_prices.effective_buy_price() > crafting_cost.cost {
                 profitable_item_ids.push(*item_id);
@@ -565,7 +233,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     request_listing_item_ids.extend(ingredient_ids);
     request_listing_item_ids.sort_unstable();
     request_listing_item_ids.dedup();
-    let tp_listings = fetch_item_listings(&request_listing_item_ids).await?;
+    let tp_listings = request::fetch_item_listings(&request_listing_item_ids).await?;
     println!(
         "Loaded {} detailed trading post listings",
         tp_listings.len()
@@ -585,7 +253,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &items_map,
                 tp_listings_map.clone(),
                 None,
-                &opt,
+                &crafting_options,
             )
         })
         .collect();
@@ -712,156 +380,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[derive(Debug)]
-struct ProfitableItem {
-    id: u32,
-    crafting_cost: i32,
-    crafting_steps: Rational32,
-    count: i32,
-    profit: i32,
-}
-
-impl ProfitableItem {
-    fn profit_per_item(&self) -> i32 {
-        self.profit / self.count
-    }
-
-    fn profit_per_crafting_step(&self) -> i32 {
-        (Rational32::from_integer(self.profit) / self.crafting_steps)
-            .floor()
-            .to_integer()
-    }
-
-    fn profit_on_cost(&self) -> Rational32 {
-        Rational32::new(self.profit, self.crafting_cost)
-    }
-}
-
-async fn ensure_paginated_cache<T>(
-    cache_path: impl AsRef<Path>,
-    url_path: &str,
-) -> Result<Vec<T>, Box<dyn std::error::Error>>
-where
-    T: serde::Serialize,
-    T: serde::de::DeserializeOwned,
-{
-    if let Ok(file) = File::open(&cache_path) {
-        let stream = DeflateDecoder::new(file);
-        deserialize_from(stream).map_err(|e| e.into())
-    } else {
-        let items = request_paginated(url_path).await?;
-
-        let file = File::create(cache_path)?;
-        let stream = DeflateEncoder::new(file, Compression::default());
-        serialize_into(stream, &items)?;
-
-        Ok(items)
-    }
-}
-
-async fn request_paginated<T>(url_path: &str) -> Result<Vec<T>, Box<dyn std::error::Error>>
-where
-    T: serde::Serialize,
-    T: serde::de::DeserializeOwned,
-{
-    let mut page_no = 0;
-    let mut page_total = 0;
-
-    // update page total with first request
-    let mut items: Vec<T> = request_page(url_path, page_no, &mut page_total).await?;
-
-    // fetch remaining pages in parallel batches
-    page_no += 1;
-    let mut request_results = stream::iter((page_no..page_total).map(|page_no| async move {
-        let mut unused = 0;
-        request_page::<T>(url_path, page_no, &mut unused).await
-    }))
-    .buffered(PARALLEL_REQUESTS)
-    .collect::<Vec<Result<Vec<T>, Box<dyn std::error::Error>>>>()
-    .await;
-
-    for result in request_results.drain(..) {
-        let mut new_items = result?;
-        items.append(&mut new_items);
-    }
-
-    Ok(items)
-}
-
-async fn request_page<T>(
-    url_path: &str,
-    page_no: usize,
-    page_total: &mut usize,
-) -> Result<Vec<T>, Box<dyn std::error::Error>>
-where
-    T: serde::Serialize,
-    T: serde::de::DeserializeOwned,
-{
-    let url = format!(
-        "https://api.guildwars2.com/v2/{}?page={}&page_size={}",
-        url_path, page_no, MAX_PAGE_SIZE
-    );
-
-    println!("Fetching {}", url);
-    let response = reqwest::get(&url).await?;
-
-    let page_total_str = response
-        .headers()
-        .get("X-Page-Total")
-        .expect("Missing X-Page-Total header")
-        .to_str()
-        .expect("X-Page-Total header contains invalid string");
-    *page_total = page_total_str
-        .parse()
-        .unwrap_or_else(|_| panic!("X-Page-Total is an invalid integer: {}", page_total_str));
-
-    response.json::<Vec<T>>().await.map_err(|e| e.into())
-}
-
-async fn fetch_item_listings(
-    item_ids: &Vec<u32>,
-) -> Result<Vec<ItemListings>, Box<dyn std::error::Error>> {
-    let mut tp_listings: Vec<ItemListings> =
-        request_item_ids("commerce/listings", &item_ids).await?;
-
-    for listings in &mut tp_listings {
-        // by default sells are listed in ascending and buys in descending price.
-        // reverse lists to allow best offers to be popped instead of spliced from front.
-        listings.buys.reverse();
-        listings.sells.reverse();
-    }
-
-    Ok(tp_listings)
-}
-
-async fn request_item_ids<T>(
-    url_path: &str,
-    item_ids: &Vec<u32>,
-) -> Result<Vec<T>, Box<dyn std::error::Error>>
-where
-    T: serde::Serialize,
-    T: serde::de::DeserializeOwned,
-{
-    let mut result = vec![];
-
-    for batch in item_ids.chunks(MAX_ITEM_ID_LENGTH as usize) {
-        let item_ids_str: Vec<String> = batch.iter().map(|id| id.to_string()).collect();
-
-        let url = format!(
-            "https://api.guildwars2.com/v2/{}?ids={}",
-            url_path,
-            item_ids_str.join(",")
-        );
-
-        println!("Fetching {}", url);
-        let response = reqwest::get(&url).await?;
-
-        result.append(&mut response.json::<Vec<T>>().await?);
-    }
-
-    Ok(result)
-}
-
 fn vec_to_map<T, F>(mut v: Vec<T>, id_fn: F) -> FxHashMap<u32, T>
 where
     F: Fn(&T) -> u32,
@@ -873,193 +391,11 @@ where
     map
 }
 
-#[derive(Debug, Copy, Clone)]
-struct CraftingCost {
-    cost: i32,
-    source: Source,
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-enum Source {
-    Crafting,
-    TradingPost,
-    Vendor,
-}
-
-// Calculate the lowest cost method to obtain the given item, using only the current high/low tp prices.
-// This may involve a combination of crafting, trading and buying from vendors.
-fn calculate_estimated_min_crafting_cost(
+fn collect_ingredient_ids(
     item_id: u32,
-    recipes_map: &FxHashMap<u32, Recipe>,
-    items_map: &FxHashMap<u32, Item>,
-    tp_prices_map: &FxHashMap<u32, Price>,
-    opt: &Opt,
-) -> Option<CraftingCost> {
-    let item = items_map.get(&item_id);
-    let recipe = recipes_map.get(&item_id);
-    let output_item_count = recipe.map(|recipe| recipe.output_item_count).unwrap_or(1);
-
-    let crafting_cost = if let Some(recipe) = recipe {
-        if !opt.include_timegated && recipe.is_timegated() {
-            None
-        } else {
-            let mut cost = 0;
-            for ingredient in &recipe.ingredients {
-                let ingredient_cost = calculate_estimated_min_crafting_cost(
-                    ingredient.item_id,
-                    recipes_map,
-                    items_map,
-                    tp_prices_map,
-                    opt,
-                );
-
-                if let Some(CraftingCost {
-                    cost: ingredient_cost,
-                    ..
-                }) = ingredient_cost
-                {
-                    cost += ingredient_cost * ingredient.count;
-                } else {
-                    return None;
-                }
-            }
-
-            Some(div_i32_ceil(cost, output_item_count))
-        }
-    } else {
-        None
-    };
-
-    let tp_cost = tp_prices_map
-        .get(&item_id)
-        .filter(|price| price.sells.quantity > 0)
-        .map(|price| price.sells.unit_price);
-
-    let vendor_cost = item.and_then(|item| item.vendor_cost(opt)).map(|cost| cost);
-    let cost = tp_cost.inner_min(crafting_cost).inner_min(vendor_cost)?;
-
-    // give trading post precedence over crafting if costs are equal
-    let source = if tp_cost == Some(cost) {
-        Source::TradingPost
-    } else if crafting_cost == Some(cost) {
-        Source::Crafting
-    } else {
-        Source::Vendor
-    };
-
-    Some(CraftingCost { cost, source })
-}
-
-// Calculate the lowest cost method to obtain the given item, with simulated purchases from
-// the trading post.
-fn calculate_precise_min_crafting_cost(
-    item_id: u32,
-    recipes_map: &FxHashMap<u32, Recipe>,
-    items_map: &FxHashMap<u32, Item>,
-    tp_listings_map: &FxHashMap<u32, ItemListings>,
-    tp_purchases: &mut Vec<(u32, Rational32)>,
-    crafting_steps: &mut Rational32,
-    opt: &Opt,
-) -> Option<CraftingCost> {
-    let item = items_map.get(&item_id);
-
-    let recipe = recipes_map.get(&item_id);
-    let output_item_count = recipe.map(|recipe| recipe.output_item_count).unwrap_or(1);
-
-    let tp_purchases_ptr = tp_purchases.len();
-    let crafting_steps_before = *crafting_steps;
-
-    let crafting_cost = if let Some(recipe) = recipe {
-        if !opt.include_timegated && recipe.is_timegated() {
-            None
-        } else {
-            let mut cost = 0;
-            for ingredient in &recipe.ingredients {
-                let tp_purchases_ingredient_ptr = tp_purchases.len();
-                let crafting_steps_before_ingredient = *crafting_steps;
-
-                let ingredient_cost = calculate_precise_min_crafting_cost(
-                    ingredient.item_id,
-                    recipes_map,
-                    items_map,
-                    tp_listings_map,
-                    tp_purchases,
-                    crafting_steps,
-                    opt,
-                );
-
-                if let Some(CraftingCost {
-                    cost: ingredient_cost,
-                    source,
-                }) = ingredient_cost
-                {
-                    // NB: The trading post prices won't be completely accurate, because the reductions
-                    // in liquidity for ingredients are deferred until the parent recipe is fully completed.
-                    // This is to allow trading post purchases to be 'rolled back' if crafting a parent
-                    // item turns out to be less profitable than buying it.
-                    match source {
-                        Source::TradingPost => {
-                            tp_purchases.push((
-                                ingredient.item_id,
-                                Rational32::new(ingredient.count, output_item_count),
-                            ));
-                        }
-                        Source::Crafting => {
-                            // repeat purchases of the ingredient's children
-                            for i in tp_purchases_ingredient_ptr..tp_purchases.len() {
-                                let (_, count) = tp_purchases[i];
-                                tp_purchases[i].1 = count * ingredient.count / output_item_count;
-                            }
-
-                            *crafting_steps = crafting_steps_before_ingredient
-                                + (*crafting_steps - crafting_steps_before_ingredient)
-                                    * ingredient.count
-                                    / output_item_count;
-                        }
-                        _ => (),
-                    }
-
-                    cost += ingredient_cost * ingredient.count;
-                } else {
-                    return None;
-                }
-            }
-
-            Some(div_i32_ceil(cost, output_item_count))
-        }
-    } else {
-        None
-    };
-
-    let tp_cost = tp_listings_map
-        .get(&item_id)
-        .and_then(|listings| listings.lowest_sell_offer(1));
-
-    let vendor_cost = item.and_then(|item| item.vendor_cost(opt));
-    let cost = tp_cost.inner_min(crafting_cost).inner_min(vendor_cost)?;
-
-    // give trading post precedence over crafting if costs are equal
-    let source = if tp_cost == Some(cost) {
-        Source::TradingPost
-    } else if crafting_cost == Some(cost) {
-        Source::Crafting
-    } else {
-        Source::Vendor
-    };
-
-    if source != Source::Crafting {
-        tp_purchases.drain(tp_purchases_ptr..);
-        *crafting_steps = crafting_steps_before;
-    } else {
-        // increment crafting steps here, so that the final item
-        // itself is also included in the crafting step count.
-        *crafting_steps += Rational32::new(1, output_item_count);
-    }
-
-    Some(CraftingCost { cost, source })
-}
-
-fn collect_ingredient_ids(item_id: u32, recipes_map: &FxHashMap<u32, Recipe>, ids: &mut Vec<u32>) {
+    recipes_map: &FxHashMap<u32, api::Recipe>,
+    ids: &mut Vec<u32>,
+) {
     if let Some(recipe) = recipes_map.get(&item_id) {
         for ingredient in &recipe.ingredients {
             ids.push(ingredient.item_id);
@@ -1073,27 +409,4 @@ fn copper_to_string(copper: i32) -> String {
     let silver = (copper - gold * 100_00) / 100;
     let copper = copper - gold * 100_00 - silver * 100;
     format!("{}.{:02}.{:02}g", gold, silver, copper)
-}
-
-// integer division rounding up
-// see: https://stackoverflow.com/questions/2745074/fast-ceiling-of-an-integer-division-in-c-c
-fn div_i32_ceil(x: i32, y: i32) -> i32 {
-    (x + y - 1) / y
-}
-
-trait OptionInnerMin<T> {
-    fn inner_min(self, other: Option<T>) -> Option<T>;
-}
-
-impl<T> OptionInnerMin<T> for Option<T>
-where
-    T: Ord + Copy,
-{
-    fn inner_min(self, other: Option<T>) -> Option<T> {
-        match (self, other) {
-            (Option::Some(a), Option::Some(b)) => Option::Some(a.min(b)),
-            (Option::None, _) => other,
-            (_, Option::None) => self,
-        }
-    }
 }
