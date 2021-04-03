@@ -402,9 +402,9 @@ where
 {
     fn inner_min(self, other: Option<T>) -> Option<T> {
         match (self, other) {
-            (Option::Some(a), Option::Some(b)) => Option::Some(a.min(b)),
-            (Option::None, _) => other,
-            (_, Option::None) => self,
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (None, _) => other,
+            (_, None) => self,
         }
     }
 }
