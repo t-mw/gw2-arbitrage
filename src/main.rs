@@ -339,7 +339,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             output_row.disciplines,
             format!("{}", output_row.item_id),
             format!("{}", output_row.recipe_id),
-            copper_to_string(output_row.total_profit).to_string(),
+            copper_to_string(output_row.total_profit),
             format!(
                 "{} item{}",
                 output_row.number_required,
