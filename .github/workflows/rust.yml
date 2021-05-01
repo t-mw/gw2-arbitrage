@@ -123,11 +123,13 @@ jobs:
           cp "./target/release/gw2-arbitrage.exe" "./gw2-arbitrage/"
           7z a -tzip ${{ needs.properties.outputs.windows_zip_filename }} gw2-arbitrage
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v2
+      - name: GH Release
+        uses: softprops/action-gh-release@v0.1.5
         with:
-          name: releases
-          path: ${{ needs.properties.outputs.windows_zip_filename }}
+          fail_on_unmatched_files: true
+          files: ${{ needs.properties.outputs.windows_zip_filename }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-mac:
     name: Build Release (macOS)
@@ -153,11 +155,13 @@ jobs:
           cp "./target/release/gw2-arbitrage" "./gw2-arbitrage/"
           7z a -tzip ${{ needs.properties.outputs.mac_zip_filename }} gw2-arbitrage
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v2
+      - name: GH Release
+        uses: softprops/action-gh-release@v0.1.5
         with:
-          name: releases
-          path: ${{ needs.properties.outputs.mac_zip_filename }}
+          fail_on_unmatched_files: true
+          files: ${{ needs.properties.outputs.mac_zip_filename }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux:
     name: Build Release (Linux)
@@ -183,8 +187,10 @@ jobs:
           cp "./target/release/gw2-arbitrage" "./gw2-arbitrage/"
           7z a -tzip ${{ needs.properties.outputs.linux_zip_filename }} gw2-arbitrage
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v2
+      - name: GH Release
+        uses: softprops/action-gh-release@v0.1.5
         with:
-          name: releases
-          path: ${{ needs.properties.outputs.linux_zip_filename }}
+          fail_on_unmatched_files: true
+          files: ${{ needs.properties.outputs.linux_zip_filename }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
