@@ -1,0 +1,190 @@
+# Based on https://github.com/actions-rs/meta/blob/master/recipes/quickstart.md
+# For multi-OS testing see the `cross.yml` workflow.
+
+# Restrict CI to tagged commits
+on:
+  push:
+    tags:
+    - '*'
+
+name: gw2-arbitrage
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Run cargo check
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Run cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+
+  lints:
+    name: Lints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: Run cargo fmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+      - name: Run cargo clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -- -D warnings
+
+  properties:
+    name: Generate properties
+    runs-on: ubuntu-latest
+    outputs:
+      windows_zip_filename: ${{ steps.generate_windows_zip_filename.outputs.filename }}
+      mac_zip_filename: ${{ steps.generate_mac_zip_filename.outputs.filename }}
+      linux_zip_filename: ${{ steps.generate_linux_zip_filename.outputs.filename }}
+    steps:
+      - name: Get the version
+        id: get_version
+        run: echo ::set-output name=version::${GITHUB_REF/refs\/tags\/v/}
+
+      - name: Generate package filename (Windows)
+        id: generate_windows_zip_filename
+        run: echo ::set-output name=filename::gw2-arbitrage-${{ steps.get_version.outputs.version }}-x86_64-pc-windows-msvc.zip
+
+      - name: Generate package filename (macOS)
+        id: generate_mac_zip_filename
+        run: echo ::set-output name=filename::gw2-arbitrage-${{ steps.get_version.outputs.version }}-x86_64-apple-darwin.zip
+
+      - name: Generate package filename (Linux)
+        id: generate_linux_zip_filename
+        run: echo ::set-output name=filename::gw2-arbitrage-${{ steps.get_version.outputs.version }}-x86_64-unknown-linux-gnu.zip
+
+  build-win:
+    name: Build Release (Windows)
+    runs-on: windows-latest
+    needs: [check, test, lints, properties]
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Run cargo build
+        run: cargo build --all --release
+
+      - name: Create zip
+        run: |
+          mkdir gw2-arbitrage
+          cp "./target/release/gw2-arbitrage.exe" "./gw2-arbitrage/"
+          7z a -tzip ${{ needs.properties.outputs.windows_zip_filename }} gw2-arbitrage
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: releases
+          path: ${{ needs.properties.outputs.windows_zip_filename }}
+
+  build-mac:
+    name: Build Release (macOS)
+    runs-on: macos-latest
+    needs: [check, test, lints, properties]
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Run cargo build
+        run: cargo build --all --release
+
+      - name: Create zip
+        run: |
+          mkdir gw2-arbitrage
+          cp "./target/release/gw2-arbitrage" "./gw2-arbitrage/"
+          7z a -tzip ${{ needs.properties.outputs.mac_zip_filename }} gw2-arbitrage
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: releases
+          path: ${{ needs.properties.outputs.mac_zip_filename }}
+
+  build-linux:
+    name: Build Release (Linux)
+    runs-on: ubuntu-latest
+    needs: [check, test, lints, properties]
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Run cargo build
+        run: cargo build --all --release
+
+      - name: Create zip
+        run: |
+          mkdir gw2-arbitrage
+          cp "./target/release/gw2-arbitrage" "./gw2-arbitrage/"
+          7z a -tzip ${{ needs.properties.outputs.linux_zip_filename }} gw2-arbitrage
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: releases
+          path: ${{ needs.properties.outputs.linux_zip_filename }}
