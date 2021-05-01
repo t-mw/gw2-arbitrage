@@ -14,7 +14,7 @@ const MAX_PAGE_SIZE: i32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
 const MAX_ITEM_ID_LENGTH: i32 = 200; // error returned for greater than this amount
 
 pub async fn fetch_item_listings(
-    item_ids: &Vec<u32>,
+    item_ids: &[u32],
 ) -> Result<Vec<ItemListings>, Box<dyn std::error::Error>> {
     let mut tp_listings: Vec<ItemListings> =
         request_item_ids("commerce/listings", &item_ids).await?;
@@ -112,7 +112,7 @@ where
 
 async fn request_item_ids<T>(
     url_path: &str,
-    item_ids: &Vec<u32>,
+    item_ids: &[u32],
 ) -> Result<Vec<T>, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,

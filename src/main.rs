@@ -118,7 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let profitable_item = item_listings.calculate_crafting_profit(
             &recipes_map,
             &items_map,
-            tp_listings_map.clone(),
+            tp_listings_map,
             Some(&mut purchased_ingredients),
             &crafting::CraftingOptions {
                 include_timegated: true,
@@ -189,12 +189,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let mut has_discipline = false;
         for discipline in FILTER_DISCIPLINES {
-            if recipe
-                .disciplines
-                .iter()
-                .find(|s| *s == discipline)
-                .is_some()
-            {
+            if recipe.disciplines.iter().any(|s| s == discipline) {
                 has_discipline = true;
                 break;
             }
@@ -344,7 +339,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             output_row.disciplines,
             format!("{}", output_row.item_id),
             format!("{}", output_row.recipe_id),
-            format!("{}", copper_to_string(output_row.total_profit)),
+            copper_to_string(output_row.total_profit).to_string(),
             format!(
                 "{} item{}",
                 output_row.number_required,
@@ -405,8 +400,8 @@ fn collect_ingredient_ids(
 }
 
 fn copper_to_string(copper: i32) -> String {
-    let gold = copper / 100_00;
-    let silver = (copper - gold * 100_00) / 100;
-    let copper = copper - gold * 100_00 - silver * 100;
+    let gold = copper / 10000;
+    let silver = (copper - gold * 10000) / 100;
+    let copper = copper - gold * 10000 - silver * 100;
     format!("{}.{:02}.{:02}g", gold, silver, copper)
 }

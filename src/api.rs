@@ -143,8 +143,7 @@ impl Item {
             || self
                 .flags
                 .iter()
-                .find(|flag| *flag == "AccountBound" || *flag == "SoulbindOnAcquire")
-                .is_some()
+                .any(|flag| *flag == "AccountBound" || *flag == "SoulbindOnAcquire")
     }
 
     pub fn is_common_ascended_material(&self) -> bool {

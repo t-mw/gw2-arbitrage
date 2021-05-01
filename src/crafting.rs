@@ -135,9 +135,10 @@ fn calculate_precise_min_crafting_cost(
                         }
                         Source::Crafting => {
                             // repeat purchases of the ingredient's children
-                            for i in tp_purchases_ingredient_ptr..tp_purchases.len() {
-                                let (_, count) = tp_purchases[i];
-                                tp_purchases[i].1 = count * ingredient.count / output_item_count;
+                            for (_, count) in
+                                tp_purchases.iter_mut().skip(tp_purchases_ingredient_ptr)
+                            {
+                                *count *= ingredient.count / output_item_count;
                             }
 
                             *crafting_steps = crafting_steps_before_ingredient
@@ -274,7 +275,7 @@ impl api::ItemListings {
                 for (item_id, count) in &tp_purchases {
                     let existing_count = purchased_ingredients
                         .entry(*item_id)
-                        .or_insert(Rational32::from_integer(0));
+                        .or_insert_with(|| Rational32::from_integer(0));
                     *existing_count += count;
                 }
             }
