@@ -4,11 +4,10 @@ Finds items in Guild Wars 2 that can be sold on the trading post for a higher pr
 
 ## Usage
 
-1. Install [Rust](https://www.rust-lang.org/learn/get-started).
-1. Download the code from this repository and extract it to a folder.
+1. Download the release for your platform from https://github.com/t-mw/gw2-arbitrage/releases and extract the zip contents.
 1. If running Windows, open Command Prompt or PowerShell from the Start Menu. PowerShell is the better choice on Windows 7. If running Linux or MacOS, open your terminal application.
-1. Navigate to the folder using the terminal application.
-1. Run the binary with `cargo run --release` to produce a list of items that can be crafted and immediately resold
+1. Navigate to the extracted folder using the terminal application.
+1. Run the `gw2-arbitrage` binary (`gw-arbitrage.exe` on Windows) to produce a list of items that can be crafted and immediately resold
 for profit on the trading post using materials purchased from the trading post.
 The prices used assume that you buy materials at the best offer and sell the crafted items at the best bid (accounting for liquidity - see [Effects of Low Liquidity](#effects-of-low-liquidity)), so the only time
 spent waiting is during crafting.
@@ -16,13 +15,13 @@ Items with high 'profit / step' and 'profit on cost' values generally produce a 
 
     ![List of items](screen1.png)
 
-1. Pass an item id as input (e.g. `cargo run --release -- 11538`) to print a shopping list for the item, which considers the total available liquidity for each ingredient on the trading post.
+1. Pass an item id as input (e.g. `gw2-arbitrage.exe 11538`) to print a shopping list for the item, which considers the total available liquidity for each ingredient on the trading post.
 The shopping list will not include items that should be purchased from crafting station vendors. These are always cheaper to buy from the vendor instead of the trading post.
 
     ![List of materials](screen2.png)
 
     By default the shopping list will assume that you want to produce as many copies of the item as can be profitably sold on the trading post.
-    To limit the number of items that will be crafted a count may also be passed (e.g. `cargo run --release -- 11538 --count 100` will limit the shopping list to producing 100 items).
+    To limit the number of items that will be crafted a count may also be passed (e.g. `gw2-arbitrage.exe 11538 --count 100` will limit the shopping list to producing 100 items).
 
 1. Detailed crafting instructions for the item can then be found on https://gw2efficiency.com/crafting/calculator/.
    To see prices that match the output of this tool select `sell price ("instant buy")` from the `Material price` dropdown, but be aware that the gw2efficiency calculator will not show accurate profits for large amounts of items due to the liquidity issue explained below.
@@ -31,7 +30,7 @@ The shopping list will not include items that should be purchased from crafting 
 
 ## Options
 
-Run `cargo run --release -- --help` to see all available options, including CSV export.
+Run `gw2-arbitrage.exe --help` to see all available options, including CSV export.
 
 ## Effects of Low Liquidity
 
