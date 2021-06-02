@@ -64,7 +64,7 @@ where
 
     // fetch remaining pages in parallel batches
     page_no += 1;
-    let mut request_results = stream::iter((page_no..page_total).map(|page_no| async move {
+    let request_results = stream::iter((page_no..page_total).map(|page_no| async move {
         let mut unused = 0;
         request_page::<T>(url_path, page_no, &mut unused).await
     }))
@@ -72,7 +72,7 @@ where
     .collect::<Vec<Result<Vec<T>, Box<dyn std::error::Error>>>>()
     .await;
 
-    for result in request_results.drain(..) {
+    for result in request_results.into_iter() {
         let mut new_items = result?;
         items.append(&mut new_items);
     }

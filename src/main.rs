@@ -375,12 +375,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn vec_to_map<T, F>(mut v: Vec<T>, id_fn: F) -> FxHashMap<u32, T>
+fn vec_to_map<T, F>(v: Vec<T>, id_fn: F) -> FxHashMap<u32, T>
 where
     F: Fn(&T) -> u32,
 {
     let mut map = FxHashMap::default();
-    for x in v.drain(..) {
+    for x in v.into_iter() {
         map.insert(id_fn(&x), x);
     }
     map
