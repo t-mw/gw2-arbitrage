@@ -83,12 +83,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(filter_disciplines) = &filter_disciplines {
         for discipline in filter_disciplines {
             if !VALID_DISCIPLINES.contains(&discipline.as_str()) {
-                eprintln!(
+                return Err(format!(
                     "Invalid discipline: {} (valid values are {})",
                     discipline,
                     VALID_DISCIPLINES.join(", ")
-                );
-                return Ok(());
+                )
+                .into());
             }
         }
     }
