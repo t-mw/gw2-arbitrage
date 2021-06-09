@@ -7,7 +7,6 @@ use serde::{Serialize, Serializer};
 use structopt::StructOpt;
 
 use std::path::PathBuf;
-use std::string::ToString;
 
 mod api;
 mod crafting;
