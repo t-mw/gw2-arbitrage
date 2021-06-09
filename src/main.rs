@@ -7,12 +7,13 @@ use serde::{Serialize, Serializer};
 use structopt::StructOpt;
 
 use std::path::PathBuf;
+use std::string::ToString;
 
 mod api;
 mod crafting;
 mod request;
 
-const FILTER_DISCIPLINES: &[&str] = &[
+const VALID_DISCIPLINES: &[&str] = &[
     "Armorsmith",
     "Artificer",
     "Chef",
@@ -22,7 +23,7 @@ const FILTER_DISCIPLINES: &[&str] = &[
     "Scribe",
     "Tailor",
     "Weaponsmith",
-]; // only show items craftable by these disciplines
+];
 
 const ITEM_STACK_SIZE: i32 = 250; // GW2 uses a "stack size" of 250
 
@@ -36,16 +37,20 @@ struct Opt {
     #[structopt(short = "a", long)]
     include_ascended: bool,
 
-    /// If provided, output the full list of profitable recipes to this CSV file
+    /// Output the full list of profitable recipes to this CSV file
     #[structopt(short, long, parse(from_os_str))]
     output_csv: Option<PathBuf>,
 
-    /// If provided, print a shopping list of ingredients for the given item id
+    /// Print a shopping list of ingredients for the given item id
     item_id: Option<u32>,
 
-    /// If provided, limit the maximum number of items produced for a recipe
+    /// Limit the maximum number of items produced for a recipe
     #[structopt(short, long)]
     count: Option<i32>,
+
+    /// Only show items craftable by this discipline or comma-separated list of disciplines (e.g. -d=Weaponsmith,Armorsmith)
+    #[structopt(short = "d", long = "disciplines", use_delimiter = true)]
+    filter_disciplines: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -74,6 +79,20 @@ where
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opt = Opt::from_args();
+
+    let filter_disciplines = opt.filter_disciplines.filter(|v| !v.is_empty());
+    if let Some(filter_disciplines) = &filter_disciplines {
+        for discipline in filter_disciplines {
+            if !VALID_DISCIPLINES.contains(&discipline.as_str()) {
+                eprintln!(
+                    "Invalid discipline: {} (valid values are {})",
+                    discipline,
+                    VALID_DISCIPLINES.join(", ")
+                );
+                return Ok(());
+            }
+        }
+    }
 
     let recipes_path = "recipes.bin";
     let items_path = "items.bin";
@@ -187,18 +206,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        let mut has_discipline = false;
-        for discipline in FILTER_DISCIPLINES {
-            if recipe.disciplines.iter().any(|s| s == discipline) {
-                has_discipline = true;
-                break;
+        if let Some(filter_disciplines) = &filter_disciplines {
+            let mut has_discipline = false;
+            for discipline in filter_disciplines {
+                if recipe.disciplines.iter().any(|s| s == discipline) {
+                    has_discipline = true;
+                    break;
+                }
+            }
+
+            if !has_discipline {
+                continue;
             }
         }
-
-        if !has_discipline {
-            continue;
-        }
-
         // some items are craftable and have no listed restrictions but are still not listable on tp
         // e.g. 39417, 79557
         // conversely, some items have a NoSell flag but are listable on the trading post
