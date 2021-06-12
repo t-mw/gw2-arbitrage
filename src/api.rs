@@ -1,6 +1,11 @@
+use num_rational::Rational32;
 use serde::{Deserialize, Serialize};
 
-const TRADING_POST_COMMISSION: f32 = 0.15;
+const TRADING_POST_SALES_COMMISSION: i32 = 15; // %
+
+pub fn apply_trading_post_sales_commission(v: i32) -> Rational32 {
+    Rational32::new(100 - TRADING_POST_SALES_COMMISSION, 100) * v
+}
 
 // types for /commerce/prices
 #[derive(Debug, Serialize, Deserialize)]
@@ -12,7 +17,8 @@ pub struct Price {
 
 impl Price {
     pub fn effective_buy_price(&self) -> i32 {
-        (self.buys.unit_price as f32 * (1.0 - TRADING_POST_COMMISSION)).floor() as i32
+        (self.buys.unit_price as f32 * (1.0 - TRADING_POST_SALES_COMMISSION as f32 / 100.0)).floor()
+            as i32
     }
 }
 
@@ -23,7 +29,7 @@ pub struct PriceInfo {
 }
 
 // types for /recipes
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Recipe {
     pub id: u32,
     #[serde(rename = "type")]
@@ -59,6 +65,27 @@ impl Recipe {
             || self.output_item_id == 79795  // Dragon Hatchling Doll Adornments
             || self.output_item_id == 79817 // Dragon Hatchling Doll Frame
     }
+
+    #[cfg(test)]
+    pub(crate) fn mock<const A1: usize, const A2: usize>(
+        id: u32,
+        output_item_id: u32,
+        output_item_count: i32,
+        disciplines: [&str; A1],
+        ingredients: [RecipeIngredient; A2],
+    ) -> Self {
+        Recipe {
+            id,
+            output_item_id,
+            output_item_count,
+            disciplines: disciplines
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
+            ingredients: Vec::from(ingredients),
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -68,7 +95,7 @@ pub struct RecipeIngredient {
 }
 
 // types for /items
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Item {
     pub id: u32,
     chat_link: String,
@@ -150,6 +177,16 @@ impl Item {
         let name = &self.name;
         name == "Empyreal Fragment" || name == "Dragonite Ore" || name == "Pile of Bloodstone Dust"
     }
+
+    #[cfg(test)]
+    pub(crate) fn mock(id: u32, name: &str, vendor_value: i32) -> Self {
+        Item {
+            id,
+            name: name.to_string(),
+            vendor_value,
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -168,13 +205,7 @@ pub struct ItemListings {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Listing {
-    listings: i32,
+    pub listings: i32,
     pub unit_price: i32,
     pub quantity: i32,
-}
-
-impl Listing {
-    pub fn unit_price_minus_fees(&self) -> i32 {
-        (self.unit_price as f32 * (1.0 - TRADING_POST_COMMISSION)).floor() as i32
-    }
 }

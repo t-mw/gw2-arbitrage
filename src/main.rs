@@ -11,6 +11,8 @@ use std::path::PathBuf;
 mod api;
 mod crafting;
 mod request;
+#[cfg(test)]
+mod tests;
 
 const VALID_DISCIPLINES: &[&str] = &[
     "Armorsmith",
@@ -122,21 +124,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let mut request_listing_item_ids = vec![item_id];
         request_listing_item_ids.extend(ingredient_ids);
+        request_listing_item_ids.sort_unstable();
+        request_listing_item_ids.dedup();
 
         let tp_listings = request::fetch_item_listings(&request_listing_item_ids).await?;
         let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
 
         let mut purchased_ingredients: HashMap<u32, Rational32> = Default::default();
-
-        let mut tp_listings_map_clone = tp_listings_map.clone();
-        let item_listings = tp_listings_map_clone
-            .get_mut(&item_id)
-            .unwrap_or_else(|| panic!("Missing listings for item id: {}", item_id));
-
-        let profitable_item = item_listings.calculate_crafting_profit(
+        let profitable_item = crafting::calculate_crafting_profit(
+            item_id,
             &recipes_map,
             &items_map,
-            tp_listings_map,
+            &tp_listings_map,
             Some(&mut purchased_ingredients),
             &crafting::CraftingOptions {
                 include_timegated: true,
@@ -145,18 +144,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         );
 
-        if profitable_item.profit == 0 {
+        let profitable_item = if let Some(item) = profitable_item {
+            item
+        } else {
             println!("Item is not profitable to craft");
             return Ok(());
-        }
+        };
 
         println!("============");
         println!(
             "Shopping list for {} x {} = {} profit ({} / step)",
             profitable_item.count,
             &item.name,
-            copper_to_string(profitable_item.profit),
-            profitable_item.profit_per_crafting_step()
+            copper_to_string(profitable_item.profit.to_integer()),
+            profitable_item.profit_per_crafting_step().to_integer()
         );
         println!("============");
         for (ingredient_id, ingredient_count_ratio) in &purchased_ingredients {
@@ -194,7 +195,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         request::ensure_paginated_cache("commerce-prices.bin", "commerce/prices").await?;
     println!("Loaded {} trading post prices", tp_prices.len());
 
-    let tp_prices_map = vec_to_map(tp_prices, |x| x.id);
+    let mut tp_prices_map = vec_to_map(tp_prices, |x| x.id);
+    tp_prices_map.get_mut(&49429).unwrap().sells.unit_price = 6333;
 
     let mut profitable_item_ids = vec![];
     let mut ingredient_ids = vec![];
@@ -253,20 +255,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Loaded {} detailed trading post listings",
         tp_listings.len()
     );
-
     let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
+
     let mut profitable_items: Vec<_> = profitable_item_ids
         .par_iter()
-        .map(|item_id| {
-            let mut tp_listings_map_clone = tp_listings_map.clone();
-            let item_listings = tp_listings_map_clone
-                .get_mut(item_id)
-                .unwrap_or_else(|| panic!("Missing listings for item id: {}", item_id));
+        .filter_map(|item_id| {
+            let mut ingredient_ids = vec![*item_id];
+            collect_ingredient_ids(*item_id, &recipes_map, &mut ingredient_ids);
 
-            item_listings.calculate_crafting_profit(
+            let mut tp_listings_map_for_item: HashMap<u32, _> = HashMap::new();
+            for id in ingredient_ids {
+                debug_assert!(request_listing_item_ids.contains(&id));
+                if let Some(listing) = tp_listings_map.get(&id).cloned() {
+                    tp_listings_map_for_item.insert(id, listing);
+                }
+            }
+
+            crafting::calculate_crafting_profit(
+                *item_id,
                 &recipes_map,
                 &items_map,
-                tp_listings_map.clone(),
+                &tp_listings_map_for_item,
                 None,
                 &crafting_options,
             )
@@ -341,11 +350,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .join("/"),
             item_id,
             recipe_id: recipe.id,
-            total_profit: profitable_item.profit,
+            total_profit: profitable_item.profit.to_integer(),
             number_required: profitable_item.count,
-            profit_per_item: profitable_item.profit_per_item(),
+            profit_per_item: profitable_item.profit_per_item().to_integer(),
             crafting_steps: profitable_item.crafting_steps.ceil().to_integer(),
-            profit_per_step: profitable_item.profit_per_crafting_step(),
+            profit_per_step: profitable_item.profit_per_crafting_step().to_integer(),
             profit_on_cost: profitable_item.profit_on_cost(),
         };
 
@@ -385,8 +394,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", header);
     println!("{}", "=".repeat(header.len()));
 
-    let total_profit = profitable_items.iter().map(|item| item.profit).sum();
-    println!("Total: {}", copper_to_string(total_profit));
+    let total_profit: Rational32 = profitable_items.iter().map(|item| item.profit).sum();
+    println!("Total: {}", copper_to_string(total_profit.to_integer()));
 
     if let Some(writer) = &mut csv_writer {
         writer.flush()?;
