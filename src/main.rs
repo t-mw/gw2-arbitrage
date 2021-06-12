@@ -130,7 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let tp_listings = request::fetch_item_listings(&request_listing_item_ids).await?;
         let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
 
-        let mut purchased_ingredients: HashMap<u32, Rational32> = Default::default();
+        let mut purchased_ingredients = Default::default();
         let profitable_item = crafting::calculate_crafting_profit(
             item_id,
             &recipes_map,
@@ -160,7 +160,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             profitable_item.profit_per_crafting_step().to_integer()
         );
         println!("============");
-        for (ingredient_id, ingredient_count_ratio) in &purchased_ingredients {
+        for ((ingredient_id, ingredient_source), ingredient_count_ratio) in &purchased_ingredients {
             let ingredient_count = ingredient_count_ratio.ceil().to_integer();
             let ingredient_count_msg = if ingredient_count > ITEM_STACK_SIZE {
                 let stack_count = ingredient_count / ITEM_STACK_SIZE;
@@ -178,12 +178,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ingredient_count.to_string()
             };
             println!(
-                "{} {}",
+                "{} {}{}",
                 ingredient_count_msg,
                 items_map
                     .get(ingredient_id)
                     .map(|item| item.name.as_ref())
-                    .unwrap_or("???")
+                    .unwrap_or("???"),
+                if *ingredient_source == crafting::Source::Vendor {
+                    " (vendor)"
+                } else {
+                    ""
+                }
             );
         }
 

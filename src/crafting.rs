@@ -102,7 +102,7 @@ fn calculate_precise_min_crafting_cost(
     recipes_map: &HashMap<u32, api::Recipe>,
     items_map: &HashMap<u32, api::Item>,
     tp_listings_map: &mut BTreeMap<u32, ItemListings>,
-    tp_purchases: &mut Vec<(u32, Rational32)>,
+    purchases: &mut Vec<(u32, Rational32, Source)>,
     crafting_steps: &mut Rational32,
     opt: &CraftingOptions,
 ) -> Option<PreciseCraftingCost> {
@@ -111,7 +111,7 @@ fn calculate_precise_min_crafting_cost(
     let output_item_count =
         Rational32::from(recipe.map(|recipe| recipe.output_item_count).unwrap_or(1));
 
-    let tp_purchases_ptr = tp_purchases.len();
+    let purchases_ptr = purchases.len();
     let crafting_steps_before = *crafting_steps;
 
     let crafting_cost = recipe.and_then(|recipe| {
@@ -129,7 +129,7 @@ fn calculate_precise_min_crafting_cost(
                     recipes_map,
                     items_map,
                     tp_listings_map,
-                    tp_purchases,
+                    purchases,
                     crafting_steps,
                     opt,
                 );
@@ -172,16 +172,21 @@ fn calculate_precise_min_crafting_cost(
     if source == Source::Crafting {
         *crafting_steps += item_count / output_item_count;
     } else {
-        for (purchase_id, purchase_quantity) in tp_purchases.drain(tp_purchases_ptr..) {
-            tp_listings_map
-                .get_mut(&purchase_id)
-                .unwrap()
-                .pending_buy_quantity -= purchase_quantity;
+        for (purchase_id, purchase_quantity, purchase_source) in purchases.drain(purchases_ptr..) {
+            if purchase_source == Source::TradingPost {
+                tp_listings_map
+                    .get_mut(&purchase_id)
+                    .unwrap()
+                    .pending_buy_quantity -= purchase_quantity;
+            }
         }
         *crafting_steps = crafting_steps_before;
     }
+
+    if source != Source::Crafting {
+        purchases.push((item_id, item_count, source));
+    }
     if source == Source::TradingPost {
-        tp_purchases.push((item_id, item_count));
         tp_listings_map
             .get_mut(&item_id)
             .unwrap()
@@ -203,7 +208,7 @@ pub fn calculate_crafting_profit(
     recipes_map: &HashMap<u32, api::Recipe>,
     items_map: &HashMap<u32, api::Item>,
     tp_listings_map: &HashMap<u32, api::ItemListings>,
-    mut purchased_ingredients: Option<&mut HashMap<u32, Rational32>>,
+    mut purchased_ingredients: Option<&mut HashMap<(u32, Source), Rational32>>,
     opt: &CraftingOptions,
 ) -> Option<ProfitableItem> {
     let mut tp_listings_map: BTreeMap<u32, ItemListings> = tp_listings_map
@@ -221,7 +226,7 @@ pub fn calculate_crafting_profit(
     let mut total_crafting_steps = Rational32::zero();
 
     // simulate crafting 1 item per loop iteration until it becomes unprofitable
-    let mut tp_purchases = Vec::new();
+    let mut purchases = Vec::new();
     loop {
         if let Some(count) = opt.count {
             if crafting_count + output_item_count > count {
@@ -229,7 +234,7 @@ pub fn calculate_crafting_profit(
             }
         }
 
-        tp_purchases.clear();
+        purchases.clear();
         let mut crafting_steps = Rational32::zero();
 
         let crafting_cost = if let Some(PreciseCraftingCost {
@@ -241,7 +246,7 @@ pub fn calculate_crafting_profit(
             recipes_map,
             items_map,
             &mut tp_listings_map,
-            &mut tp_purchases,
+            &mut purchases,
             &mut crafting_steps,
             opt,
         ) {
@@ -269,7 +274,11 @@ pub fn calculate_crafting_profit(
             break;
         }
 
-        for (purchase_id, count) in &tp_purchases {
+        for (purchase_id, count, purchase_source) in &purchases {
+            if *purchase_source != Source::TradingPost {
+                continue;
+            }
+
             let listing = tp_listings_map.get_mut(purchase_id).unwrap_or_else(|| {
                 panic!(
                     "Missing listings for ingredient {} of item id {}",
@@ -289,9 +298,9 @@ pub fn calculate_crafting_profit(
             .all(|(_, listing)| listing.pending_buy_quantity.is_zero()));
 
         if let Some(purchased_ingredients) = &mut purchased_ingredients {
-            for (item_id, count) in &tp_purchases {
+            for (purchase_id, count, purchase_source) in &purchases {
                 let existing_count = purchased_ingredients
-                    .entry(*item_id)
+                    .entry((*purchase_id, *purchase_source))
                     .or_insert_with(Rational32::zero);
                 *existing_count += count;
             }

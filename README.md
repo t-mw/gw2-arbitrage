@@ -16,7 +16,7 @@ Items with high 'profit / step' and 'profit on cost' values generally produce a 
     ![List of items](screen1.png)
 
 1. Pass an item id as input (e.g. `gw2-arbitrage.exe 11538`) to print a shopping list for the item, which considers the total available liquidity for each ingredient on the trading post.
-The shopping list will not include items that should be purchased from crafting station vendors. These are always cheaper to buy from the vendor instead of the trading post.
+The shopping list will also include items that should be purchased from crafting station vendors.
 
     ![List of materials](screen2.png)
 
