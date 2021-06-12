@@ -119,8 +119,9 @@ impl Item {
     pub fn vendor_cost(&self) -> Option<i32> {
         let name = &self.name;
 
-        if name == "Thermocatalytic Reagent"
-            || name == "Spool of Jute Thread"
+        if name == "Thermocatalytic Reagent" {
+            Some(150)
+        } else if name == "Spool of Jute Thread"
             || name == "Spool of Wool Thread"
             || name == "Spool of Cotton Thread"
             || name == "Spool of Linen Thread"
