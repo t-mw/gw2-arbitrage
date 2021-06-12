@@ -2,7 +2,8 @@ use crate::api;
 
 use num_rational::Rational32;
 use num_traits::Zero;
-use rustc_hash::FxHashMap;
+
+use std::collections::HashMap;
 
 pub struct CraftingOptions {
     pub include_timegated: bool,
@@ -14,9 +15,9 @@ pub struct CraftingOptions {
 // This may involve a combination of crafting, trading and buying from vendors.
 pub fn calculate_estimated_min_crafting_cost(
     item_id: u32,
-    recipes_map: &FxHashMap<u32, api::Recipe>,
-    items_map: &FxHashMap<u32, api::Item>,
-    tp_prices_map: &FxHashMap<u32, api::Price>,
+    recipes_map: &HashMap<u32, api::Recipe>,
+    items_map: &HashMap<u32, api::Item>,
+    tp_prices_map: &HashMap<u32, api::Price>,
     opt: &CraftingOptions,
 ) -> Option<CraftingCost> {
     let item = items_map.get(&item_id);
@@ -84,9 +85,9 @@ pub fn calculate_estimated_min_crafting_cost(
 // the trading post.
 fn calculate_precise_min_crafting_cost(
     item_id: u32,
-    recipes_map: &FxHashMap<u32, api::Recipe>,
-    items_map: &FxHashMap<u32, api::Item>,
-    tp_listings_map: &FxHashMap<u32, api::ItemListings>,
+    recipes_map: &HashMap<u32, api::Recipe>,
+    items_map: &HashMap<u32, api::Item>,
+    tp_listings_map: &HashMap<u32, api::ItemListings>,
     tp_purchases: &mut Vec<(u32, Rational32)>,
     crafting_steps: &mut Rational32,
     opt: &CraftingOptions,
@@ -212,10 +213,10 @@ enum Source {
 impl api::ItemListings {
     pub fn calculate_crafting_profit(
         &mut self,
-        recipes_map: &FxHashMap<u32, api::Recipe>,
-        items_map: &FxHashMap<u32, api::Item>,
-        mut tp_listings_map: FxHashMap<u32, api::ItemListings>,
-        mut purchased_ingredients: Option<&mut FxHashMap<u32, Rational32>>,
+        recipes_map: &HashMap<u32, api::Recipe>,
+        items_map: &HashMap<u32, api::Item>,
+        mut tp_listings_map: HashMap<u32, api::ItemListings>,
+        mut purchased_ingredients: Option<&mut HashMap<u32, Rational32>>,
         opt: &CraftingOptions,
     ) -> ProfitableItem {
         let mut listing_profit = 0;

@@ -2,10 +2,10 @@ use colored::Colorize;
 use num_rational::Rational32;
 use num_traits::ToPrimitive;
 use rayon::prelude::*;
-use rustc_hash::FxHashMap;
 use serde::{Serialize, Serializer};
 use structopt::StructOpt;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 mod api;
@@ -126,7 +126,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let tp_listings = request::fetch_item_listings(&request_listing_item_ids).await?;
         let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
 
-        let mut purchased_ingredients: FxHashMap<u32, Rational32> = Default::default();
+        let mut purchased_ingredients: HashMap<u32, Rational32> = Default::default();
 
         let mut tp_listings_map_clone = tp_listings_map.clone();
         let item_listings = tp_listings_map_clone
@@ -394,11 +394,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn vec_to_map<T, F>(v: Vec<T>, id_fn: F) -> FxHashMap<u32, T>
+fn vec_to_map<T, F>(v: Vec<T>, id_fn: F) -> HashMap<u32, T>
 where
     F: Fn(&T) -> u32,
 {
-    let mut map = FxHashMap::default();
+    let mut map = HashMap::default();
     for x in v.into_iter() {
         map.insert(id_fn(&x), x);
     }
@@ -407,7 +407,7 @@ where
 
 fn collect_ingredient_ids(
     item_id: u32,
-    recipes_map: &FxHashMap<u32, api::Recipe>,
+    recipes_map: &HashMap<u32, api::Recipe>,
     ids: &mut Vec<u32>,
 ) {
     if let Some(recipe) = recipes_map.get(&item_id) {
