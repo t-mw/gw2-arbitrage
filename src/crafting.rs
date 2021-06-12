@@ -1,6 +1,7 @@
 use crate::api;
 
 use num_rational::Rational32;
+use num_traits::Zero;
 use rustc_hash::FxHashMap;
 
 pub struct CraftingOptions {
@@ -220,7 +221,7 @@ impl api::ItemListings {
         let mut listing_profit = 0;
         let mut total_crafting_cost = 0;
         let mut crafting_count = 0;
-        let mut total_crafting_steps = Rational32::from_integer(0);
+        let mut total_crafting_steps = Rational32::zero();
 
         let mut tp_purchases = Vec::with_capacity(512);
         loop {
@@ -231,7 +232,7 @@ impl api::ItemListings {
             }
 
             tp_purchases.clear();
-            let mut crafting_steps = Rational32::from_integer(0);
+            let mut crafting_steps = Rational32::zero();
 
             let crafting_cost = if let Some(crafting_cost) = calculate_precise_min_crafting_cost(
                 self.id,
@@ -275,7 +276,7 @@ impl api::ItemListings {
                 for (item_id, count) in &tp_purchases {
                     let existing_count = purchased_ingredients
                         .entry(*item_id)
-                        .or_insert_with(|| Rational32::from_integer(0));
+                        .or_insert_with(Rational32::zero);
                     *existing_count += count;
                 }
             }
