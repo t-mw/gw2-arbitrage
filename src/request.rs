@@ -6,9 +6,8 @@ use flate2::write::DeflateEncoder;
 use flate2::Compression;
 use futures::{stream, StreamExt};
 
-use std::hash::{Hash, Hasher};
+use std::fs::File;
 use std::path::Path;
-use std::{collections::hash_map::DefaultHasher, fs::File};
 
 const PARALLEL_REQUESTS: usize = 10;
 const MAX_PAGE_SIZE: i32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
@@ -130,28 +129,10 @@ where
             item_ids_str.join(",")
         );
 
-        let mut hasher = DefaultHasher::new();
-        url_path.hash(&mut hasher);
-        batch.hash(&mut hasher);
-        let cache_path = format!("{}.bin", hasher.finish().to_string());
-        let mut items = if let Ok(file) = File::open(&cache_path) {
-            let stream = DeflateDecoder::new(file);
-            let result: Result<Vec<T>, Box<dyn std::error::Error>> =
-                deserialize_from(stream).map_err(|e| e.into());
-            result?
-        } else {
-            println!("Fetching {}", url);
-            let response = reqwest::get(&url).await?;
-            let items = response.json::<Vec<T>>().await?;
+        println!("Fetching {}", url);
+        let response = reqwest::get(&url).await?;
 
-            let file = File::create(cache_path)?;
-            let stream = DeflateEncoder::new(file, Compression::default());
-            serialize_into(stream, &items)?;
-
-            items
-        };
-
-        result.append(&mut items);
+        result.append(&mut response.json::<Vec<T>>().await?);
     }
 
     Ok(result)

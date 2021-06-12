@@ -196,8 +196,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Loading trading post prices");
-    let tp_prices: Vec<api::Price> =
-        request::ensure_paginated_cache("commerce-prices.bin", "commerce/prices").await?;
+    let tp_prices: Vec<api::Price> = request::request_paginated("commerce/prices").await?;
     println!("Loaded {} trading post prices", tp_prices.len());
 
     let mut tp_prices_map = vec_to_map(tp_prices, |x| x.id);
