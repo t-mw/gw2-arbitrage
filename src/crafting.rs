@@ -31,7 +31,7 @@ pub fn calculate_estimated_min_crafting_cost(
     let recipe = recipes_map.get(&item_id);
     let output_item_count = recipe.map(|recipe| recipe.output_item_count).unwrap_or(1);
 
-    let crafting_cost = if let Some(recipe) = recipe {
+    let crafting_cost = recipe.and_then(|recipe| {
         if !opt.include_timegated && recipe.is_timegated() {
             None
         } else {
@@ -58,9 +58,7 @@ pub fn calculate_estimated_min_crafting_cost(
 
             Some(div_i32_ceil(cost, output_item_count))
         }
-    } else {
-        None
-    };
+    });
 
     let tp_cost = tp_prices_map
         .get(&item_id)
