@@ -167,7 +167,7 @@ jobs:
 
   build-linux:
     name: Build Release (Linux)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
     needs: [check, test, lints, properties]
     steps:
       - name: Checkout sources
