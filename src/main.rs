@@ -234,14 +234,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => continue,
         };
 
-        if let Some(crafting_cost) = crafting::calculate_estimated_min_crafting_cost(
+        if let Some(crafting::EstimatedCraftingCost {
+            source: crafting::Source::Crafting,
+            cost: crafting_cost,
+        }) = crafting::calculate_estimated_min_crafting_cost(
             *item_id,
             &recipes_map,
             &items_map,
             &tp_prices_map,
             &crafting_options,
         ) {
-            if tp_prices.effective_buy_price() > crafting_cost.cost {
+            if tp_prices.effective_buy_price() > crafting_cost {
                 profitable_item_ids.push(*item_id);
                 collect_ingredient_ids(*item_id, &recipes_map, &mut ingredient_ids);
             }

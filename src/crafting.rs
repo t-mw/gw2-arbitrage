@@ -15,7 +15,7 @@ pub struct CraftingOptions {
 #[derive(Debug, Copy, Clone)]
 pub struct EstimatedCraftingCost {
     pub cost: i32,
-    source: Source,
+    pub source: Source,
 }
 
 // Calculate the lowest cost method to obtain the given item, using only the current high/low tp prices.
