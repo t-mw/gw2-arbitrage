@@ -9,7 +9,6 @@ bincode = "1.2"
 colored = "1.9"
 csv = "1.1"
 flate2 = "1.0"
-ordered-float = "1.0"
 futures = "0.3"
 num-rational = "0.3"
 num-traits = { version = "0.2", default-features = false }
