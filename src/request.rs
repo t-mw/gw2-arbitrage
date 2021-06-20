@@ -39,16 +39,24 @@ where
 {
     if let Ok(file) = File::open(&cache_path) {
         let stream = DeflateDecoder::new(file);
-        deserialize_from(stream).map_err(|e| e.into())
-    } else {
-        let items = request_paginated(url_path).await?;
-
-        let file = File::create(cache_path)?;
-        let stream = DeflateEncoder::new(file, Compression::default());
-        serialize_into(stream, &items)?;
-
-        Ok(items)
+        match deserialize_from(stream) {
+            Ok(v) => return Ok(v),
+            Err(_) => {
+                eprintln!(
+                    "Failed to deserialize existing cache at '{}'. Recreating the cache.",
+                    cache_path.as_ref().display()
+                );
+            }
+        }
     }
+
+    let items = request_paginated(url_path).await?;
+
+    let file = File::create(cache_path)?;
+    let stream = DeflateEncoder::new(file, Compression::default());
+    serialize_into(stream, &items)?;
+
+    Ok(items)
 }
 
 pub async fn request_paginated<T>(url_path: &str) -> Result<Vec<T>, Box<dyn std::error::Error>>

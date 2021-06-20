@@ -1,6 +1,7 @@
 use colored::Colorize;
 use num_rational::Rational32;
 use num_traits::ToPrimitive;
+use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use serde::{Serialize, Serializer};
 use structopt::StructOpt;
@@ -52,7 +53,23 @@ struct Opt {
     /// Only show items craftable by this discipline or comma-separated list of disciplines (e.g. -d=Weaponsmith,Armorsmith)
     #[structopt(short = "d", long = "disciplines", use_delimiter = true)]
     filter_disciplines: Option<Vec<String>>,
+
+    /// Download recipes and items from the GW2 API, replacing any previously cached recipes and items
+    #[structopt(long)]
+    reset_cache: bool,
+
+    #[structopt(long, parse(from_os_str), help = &CACHE_DIR_HELP)]
+    cache_dir: Option<PathBuf>,
 }
+
+static CACHE_DIR_HELP: Lazy<String> = Lazy::new(|| {
+    format!(
+        r#"Save cached recipes and items to this directory
+
+If provided, the cache directory must already exist. Defaults to '{}'."#,
+        cache_dir().unwrap().display()
+    )
+});
 
 #[derive(Debug, Serialize)]
 struct OutputRow {
@@ -95,17 +112,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let recipes_path = "recipes.bin";
-    let items_path = "items.bin";
+    let cache_dir = create_cache_dir()?;
+    let mut recipes_path = cache_dir.clone();
+    recipes_path.push("recipes.bin");
+    let mut items_path = cache_dir.clone();
+    items_path.push("items.bin");
+
+    if opt.reset_cache {
+        if recipes_path.exists() {
+            std::fs::remove_file(&recipes_path)
+                .map_err(|e| format!("Failed to remove '{}' ({})", recipes_path.display(), e))?;
+        }
+        if items_path.exists() {
+            std::fs::remove_file(&items_path)
+                .map_err(|e| format!("Failed to remove '{}' ({})", items_path.display(), e))?;
+        }
+    }
 
     println!("Loading recipes");
     let recipes: Vec<api::Recipe> =
-        request::ensure_paginated_cache(recipes_path, "recipes").await?;
-    println!("Loaded {} recipes", recipes.len());
+        request::ensure_paginated_cache(&recipes_path, "recipes").await?;
+    println!(
+        "Loaded {} recipes cached at '{}'",
+        recipes.len(),
+        recipes_path.display()
+    );
 
     println!("Loading items");
-    let items: Vec<api::Item> = request::ensure_paginated_cache(items_path, "items").await?;
-    println!("Loaded {} items", items.len());
+    let items: Vec<api::Item> = request::ensure_paginated_cache(&items_path, "items").await?;
+    println!(
+        "Loaded {} items cached at '{}'",
+        items.len(),
+        items_path.display()
+    );
 
     let recipes_map = vec_to_map(recipes, |x| x.output_item_id);
     let items_map = vec_to_map(items, |x| x.id);
@@ -409,6 +448,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn create_cache_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    cache_dir().and_then(|dir| {
+        if !dir.exists() {
+            std::fs::create_dir(&dir)
+                .map_err(|e| format!("Failed to create '{}' ({})", dir.display(), e).into())
+                .and(Ok(dir))
+        } else {
+            Ok(dir)
+        }
+    })
+}
+
+fn cache_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    dirs::cache_dir()
+        .filter(|d| d.exists())
+        .map(|mut cache_dir| {
+            cache_dir.push("gw2-arbitrage");
+            cache_dir
+        })
+        .or_else(|| std::env::current_dir().ok())
+        .ok_or_else(|| "Failed to access current working directory".into())
 }
 
 fn vec_to_map<T, F>(v: Vec<T>, id_fn: F) -> HashMap<u32, T>
