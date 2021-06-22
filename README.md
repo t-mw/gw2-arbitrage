@@ -48,5 +48,5 @@ Although most existing tools ignore this effect, not accounting for it results i
 ## Cache
 
 The first run of the tool can take a while since all items and recipes must be downloaded from the Guild Wars 2 API.
-On subsequent runs the tool will use cached versions of the item and recipe databases, stored in the system cache directory. The location of the default cache directory is printed in the help text for the `--cache-dir` option.
+On subsequent runs the tool will use cached versions of the item and recipe databases, stored in the system cache directory. The location of the system cache directory is printed in the help text for the `--cache-dir` option.
 The cache directory can be deleted to clear the cache or replaced using the `--reset-cache` flag.
