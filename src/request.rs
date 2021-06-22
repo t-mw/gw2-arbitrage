@@ -65,20 +65,20 @@ where
     T: serde::de::DeserializeOwned,
 {
     let mut page_no = 0;
-    let mut page_total = 0;
+    let mut page_total = None;
 
     // update page total with first request
     let mut items: Vec<T> = request_page(url_path, page_no, &mut page_total).await?;
 
     // fetch remaining pages in parallel batches
     page_no += 1;
-    let request_results = stream::iter((page_no..page_total).map(|page_no| async move {
-        let mut unused = 0;
-        request_page::<T>(url_path, page_no, &mut unused).await
-    }))
-    .buffered(PARALLEL_REQUESTS)
-    .collect::<Vec<Result<Vec<T>, Box<dyn std::error::Error>>>>()
-    .await;
+    let request_results =
+        stream::iter((page_no..page_total.expect("Missing page total")).map(
+            |page_no| async move { request_page::<T>(url_path, page_no, &mut page_total).await },
+        ))
+        .buffered(PARALLEL_REQUESTS)
+        .collect::<Vec<Result<Vec<T>, Box<dyn std::error::Error>>>>()
+        .await;
 
     for result in request_results.into_iter() {
         let mut new_items = result?;
@@ -91,7 +91,7 @@ where
 async fn request_page<T>(
     url_path: &str,
     page_no: usize,
-    page_total: &mut usize,
+    page_total: &mut Option<usize>,
 ) -> Result<Vec<T>, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
@@ -105,15 +105,18 @@ where
     println!("Fetching {}", url);
     let response = reqwest::get(&url).await?;
 
-    let page_total_str = response
-        .headers()
-        .get("X-Page-Total")
-        .expect("Missing X-Page-Total header")
-        .to_str()
-        .expect("X-Page-Total header contains invalid string");
-    *page_total = page_total_str
-        .parse()
-        .unwrap_or_else(|_| panic!("X-Page-Total is an invalid integer: {}", page_total_str));
+    if page_total.is_none() {
+        let page_total_str = response
+            .headers()
+            .get("X-Page-Total")
+            .expect("Missing X-Page-Total header")
+            .to_str()
+            .expect("X-Page-Total header contains invalid string");
+        *page_total =
+            Some(page_total_str.parse().unwrap_or_else(|_| {
+                panic!("X-Page-Total is an invalid integer: {}", page_total_str)
+            }));
+    }
 
     response.json::<Vec<T>>().await.map_err(|e| e.into())
 }
