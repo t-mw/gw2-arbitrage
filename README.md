@@ -1,5 +1,10 @@
 # gw2-arbitrage
 
+[![Crates.io][crates_img]][crates_link]
+
+[crates_img]: https://img.shields.io/crates/v/gw2-arbitrage.svg
+[crates_link]: https://crates.io/crates/gw2-arbitrage
+
 Finds items in Guild Wars 2 that can be sold on the trading post for a higher price than the cost of crafting the item.
 
 ## Usage
