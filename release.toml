@@ -1,0 +1,11 @@
+pre-release-replacements = [
+  {file="CHANGELOG.md", search="Unreleased", replace="v{{version}}"},
+  {file="CHANGELOG.md", search="### Features\n\n#", replace="#", min=0},
+  {file="CHANGELOG.md", search="### Features\n\n\n#", replace="#", min=0},
+  {file="CHANGELOG.md", search="### Fixes\n\n#", replace="#", min=0},
+  {file="CHANGELOG.md", search="### Fixes\n\n\n#", replace="#", min=0},
+  {file="CHANGELOG.md", search="### Other\n\n#", replace="#", min=0},
+  {file="CHANGELOG.md", search="### Other\n\n\n#", replace="#", min=0},
+]
+pre-release-commit-message = "chore(release): v{{version}}"
+post-release-commit-message = "chore(release): start v{{next_version}}"

@@ -1,0 +1,7 @@
+# see https://github.com/convco/convco/blob/master/src/conventional/config.rs
+template: "changelog"
+compareUrlFormat: ""
+types:
+        - { type: "feat", section: "Features", hidden: false }
+        - { type: "fix", section: "Fixes", hidden: false }
+        - { type: "style", section: "Other", hidden: false }
