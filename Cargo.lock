@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "gw2-arbitrage"
-version = "0.6.0"
+version = "0.6.1-alpha.0"
 dependencies = [
  "bincode",
  "colored",
