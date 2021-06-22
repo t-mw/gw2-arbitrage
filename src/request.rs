@@ -118,7 +118,9 @@ where
             }));
     }
 
-    response.json::<Vec<T>>().await.map_err(|e| e.into())
+    let bytes = response.bytes().await?;
+    let de = &mut serde_json::Deserializer::from_slice(&bytes);
+    serde_path_to_error::deserialize(de).map_err(|e| e.into())
 }
 
 async fn request_item_ids<T>(
@@ -142,8 +144,10 @@ where
 
         println!("Fetching {}", url);
         let response = reqwest::get(&url).await?;
-
-        result.append(&mut response.json::<Vec<T>>().await?);
+        let bytes = response.bytes().await?;
+        let de = &mut serde_json::Deserializer::from_slice(&bytes);
+        let v: Vec<T> = serde_path_to_error::deserialize(de)?;
+        result.extend(v.into_iter());
     }
 
     Ok(result)
