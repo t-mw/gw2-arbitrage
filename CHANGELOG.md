@@ -1,8 +1,8 @@
 # Changelog
 
-## v0.6.2
+### v0.6.2
 
-### Features
+#### Features
 
 * Support --cache-dir option.
 
@@ -21,4 +21,3 @@
 ### Fixes
 
 * Reduce cache size by removing unused fields.
-

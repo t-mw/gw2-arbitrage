@@ -6,6 +6,11 @@
 release:
 	cargo clippy -- -D warnings
 	convco check v0.5.1..HEAD
-	convco changelog -c .versionrc v0.5.1..HEAD > CHANGELOG.md
-	# Manually commit generated CHANGELOG if it was updated
+	git tag v$$(convco version --bump)
+	convco changelog -c .versionrc v0.5.1..v$$(convco version --bump) > CHANGELOG.md
+	git tag -d v$$(convco version --bump)
+	# replace empty sections in changelog
+	perl -i -p0e 's/\n[#]+ (Features|Fixes|Other)[\s]*#/\n#/sg' CHANGELOG.md
+	# cargo release will fail on uncommitted changes allowing us to
+	# manually check and commit the updated CHANGELOG.
 	cargo release $$(convco version --bump)
