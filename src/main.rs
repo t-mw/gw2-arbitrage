@@ -66,7 +66,7 @@ static CACHE_DIR_HELP: Lazy<String> = Lazy::new(|| {
     format!(
         r#"Save cached recipes and items to this directory
 
-If provided, the cache directory must already exist. Defaults to '{}'."#,
+If provided, the parent directory of the cache directory must already exist. Defaults to '{}'."#,
         cache_dir().unwrap().display()
     )
 });
@@ -98,8 +98,8 @@ where
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opt = Opt::from_args();
 
-    let filter_disciplines = opt.filter_disciplines.filter(|v| !v.is_empty());
-    if let Some(filter_disciplines) = &filter_disciplines {
+    let filter_disciplines = opt.filter_disciplines.as_ref().filter(|v| !v.is_empty());
+    if let Some(filter_disciplines) = filter_disciplines {
         for discipline in filter_disciplines {
             if !VALID_DISCIPLINES.contains(&discipline.as_str()) {
                 return Err(format!(
@@ -112,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let cache_dir = create_cache_dir()?;
+    let cache_dir = create_cache_dir(&opt)?;
     let mut recipes_path = cache_dir.clone();
     recipes_path.push("recipes.bin");
     let mut items_path = cache_dir.clone();
@@ -256,7 +256,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        if let Some(filter_disciplines) = &filter_disciplines {
+        if let Some(filter_disciplines) = filter_disciplines {
             let mut has_discipline = false;
             for discipline in filter_disciplines {
                 if recipe.disciplines.iter().any(|s| s == discipline) {
@@ -455,16 +455,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn create_cache_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    cache_dir().and_then(|dir| {
-        if !dir.exists() {
-            std::fs::create_dir(&dir)
-                .map_err(|e| format!("Failed to create '{}' ({})", dir.display(), e).into())
-                .and(Ok(dir))
-        } else {
-            Ok(dir)
-        }
-    })
+fn create_cache_dir(opt: &Opt) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let dir = if let Some(dir) = &opt.cache_dir {
+        dir.clone()
+    } else {
+        cache_dir()?
+    };
+    if !dir.exists() {
+        std::fs::create_dir(&dir)
+            .map_err(|e| format!("Failed to create '{}' ({})", dir.display(), e).into())
+            .and(Ok(dir))
+    } else {
+        Ok(dir)
+    }
 }
 
 fn cache_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
