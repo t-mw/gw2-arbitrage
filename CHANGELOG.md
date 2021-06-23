@@ -1,8 +1,14 @@
 # Changelog
 
-## v0.6.1
+## Unreleased
 
-### Fixes
+### Features
+
+* Support --cache-dir option.
+
+### v0.6.1
+
+#### Fixes
 
 * Handle page total changing during pagination.
 
