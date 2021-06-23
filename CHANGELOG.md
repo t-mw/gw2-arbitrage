@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+* Handle page total changing during pagination.
+
 ## v0.6.0
 
 ### Features
@@ -9,3 +15,4 @@
 ### Fixes
 
 * Reduce cache size by removing unused fields.
+
