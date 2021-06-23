@@ -72,13 +72,16 @@ where
 
     // fetch remaining pages in parallel batches
     page_no += 1;
-    let request_results =
-        stream::iter((page_no..page_total.expect("Missing page total")).map(
-            |page_no| async move { request_page::<T>(url_path, page_no, &mut page_total).await },
-        ))
-        .buffered(PARALLEL_REQUESTS)
-        .collect::<Vec<Result<Vec<T>, Box<dyn std::error::Error>>>>()
-        .await;
+
+    // try fetching one extra page in case page total increased while paginating
+    let page_total = page_total.expect("Missing page total") + 1;
+
+    let request_results = stream::iter((page_no..page_total).map(|page_no| async move {
+        request_page::<T>(url_path, page_no, &mut Some(page_total)).await
+    }))
+    .buffered(PARALLEL_REQUESTS)
+    .collect::<Vec<Result<Vec<T>, Box<dyn std::error::Error>>>>()
+    .await;
 
     for result in request_results.into_iter() {
         let mut new_items = result?;
@@ -118,8 +121,11 @@ where
             }));
     }
 
-    let bytes = response.bytes().await?;
-    let de = &mut serde_json::Deserializer::from_slice(&bytes);
+    let txt = response.text().await?;
+    if txt.contains("page out of range") {
+        return Ok(vec![]);
+    }
+    let de = &mut serde_json::Deserializer::from_str(&txt);
     serde_path_to_error::deserialize(de).map_err(|e| e.into())
 }
 
