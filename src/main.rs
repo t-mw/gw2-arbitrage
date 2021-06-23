@@ -120,10 +120,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if opt.reset_cache {
         if recipes_path.exists() {
+            println!(
+                "Removing existing cache file at '{}'",
+                recipes_path.display()
+            );
             std::fs::remove_file(&recipes_path)
                 .map_err(|e| format!("Failed to remove '{}' ({})", recipes_path.display(), e))?;
         }
         if items_path.exists() {
+            println!("Removing existing cache file at '{}'", items_path.display());
             std::fs::remove_file(&items_path)
                 .map_err(|e| format!("Failed to remove '{}' ({})", items_path.display(), e))?;
         }
