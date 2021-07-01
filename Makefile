@@ -10,7 +10,7 @@ release:
 	convco changelog -c .versionrc v0.5.1..v$$(convco version --bump) > CHANGELOG.md
 	git tag -d v$$(convco version --bump)
 	# replace empty sections in changelog
-	perl -i -p0e 's/\n[#]+ (Features|Fixes|Other)[\s]*#/\n#/sg' CHANGELOG.md
+	perl -i -p0e '1 while s/\n[#]+ (Features|Fixes|Other)[\s]*#/\n#/sg' CHANGELOG.md
 	# cargo release will fail on uncommitted changes allowing us to
 	# manually check and commit the updated CHANGELOG.
 	cargo release $$(convco version --bump)
