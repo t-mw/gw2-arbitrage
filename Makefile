@@ -2,6 +2,10 @@
 # - Commit following https://www.conventionalcommits.org/. Suggested types are `feat:`, `fix:`, `build:`, `chore:`, `ci:`, `docs:`, `style:`, `refactor:`, `perf:` and `test:`.
 # - Release with `make release`.
 # NB: CHANGELOG is only generated for v0.6 onwards since this is when conventional commits started being used.
+
+debug:
+	cargo build
+
 .PHONY: release
 release:
 	cargo clippy -- -D warnings
