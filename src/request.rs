@@ -17,7 +17,7 @@ pub async fn fetch_item_listings(
     item_ids: &[u32],
 ) -> Result<Vec<ItemListings>, Box<dyn std::error::Error>> {
     let mut tp_listings: Vec<ItemListings> =
-        request_item_ids("commerce/listings", &item_ids).await?;
+        request_item_ids("commerce/listings", item_ids).await?;
 
     for listings in &mut tp_listings {
         // by default sells are listed in ascending and buys in descending price.
