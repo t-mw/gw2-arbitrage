@@ -235,6 +235,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             );
         }
+        println!("============");
+        println!(
+            "Crafting steps: https://gw2efficiency.com/crafting/calculator/a~1!b~1!c~1!d~{}-{}",
+            profitable_item.count,
+            item_id
+        );
 
         return Ok(());
     }
