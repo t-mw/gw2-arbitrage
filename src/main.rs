@@ -203,6 +203,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             copper_to_string(profitable_item.profit.to_integer()),
             profitable_item.profit_per_crafting_step().to_integer()
         );
+        println!(
+            "Min sell price per unit: {}",
+            copper_to_string(profitable_item.min_price().to_integer())
+        );
         println!("============");
         for ((ingredient_id, ingredient_source), ingredient_count_ratio) in &purchased_ingredients {
             let ingredient_count = ingredient_count_ratio.ceil().to_integer();

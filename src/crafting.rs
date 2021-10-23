@@ -339,6 +339,12 @@ impl ProfitableItem {
         self.profit / Rational32::from(self.count)
     }
 
+    pub fn min_price(&self) -> Rational32 {
+        api::apply_trading_post_sales_commission(
+            (self.crafting_cost / Rational32::from(self.count)).to_integer()
+        )
+    }
+
     pub fn profit_per_crafting_step(&self) -> Rational32 {
         self.profit / self.crafting_steps
     }
