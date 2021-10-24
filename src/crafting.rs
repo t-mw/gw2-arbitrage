@@ -538,7 +538,8 @@ impl Recipe {
             || self.output_item_id == 79763  // Gossamer Stuffing
             || self.output_item_id == 79790  // Dragon Hatchling Doll Hide
             || self.output_item_id == 79795  // Dragon Hatchling Doll Adornments
-            || self.output_item_id == 79817 // Dragon Hatchling Doll Frame
+            || self.output_item_id == 79817  // Dragon Hatchling Doll Frame
+            || self.output_item_id == 43772 // Charged Quartz Crystal
     }
 
     #[cfg(test)]
