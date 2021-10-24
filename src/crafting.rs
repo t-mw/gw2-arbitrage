@@ -1,9 +1,11 @@
 use crate::api;
+use crate::gw2efficiency;
 
 use num_rational::Rational32;
 use num_traits::{Signed, Zero};
 
 use std::collections::{BTreeMap, HashMap};
+use std::convert::TryFrom;
 
 #[derive(Debug, Default)]
 pub struct CraftingOptions {
@@ -22,7 +24,7 @@ pub struct EstimatedCraftingCost {
 // This may involve a combination of crafting, trading and buying from vendors.
 pub fn calculate_estimated_min_crafting_cost(
     item_id: u32,
-    recipes_map: &HashMap<u32, api::Recipe>,
+    recipes_map: &HashMap<u32, Recipe>,
     items_map: &HashMap<u32, api::Item>,
     tp_prices_map: &HashMap<u32, api::Price>,
     opt: &CraftingOptions,
@@ -102,7 +104,7 @@ struct PreciseCraftingCostContext {
 fn calculate_precise_min_crafting_cost(
     item_id: u32,
     item_count: Rational32,
-    recipes_map: &HashMap<u32, api::Recipe>,
+    recipes_map: &HashMap<u32, Recipe>,
     items_map: &HashMap<u32, api::Item>,
     tp_listings_map: &mut BTreeMap<u32, ItemListings>,
     context: &mut PreciseCraftingCostContext,
@@ -208,7 +210,7 @@ pub enum Source {
 
 pub fn calculate_crafting_profit(
     item_id: u32,
-    recipes_map: &HashMap<u32, api::Recipe>,
+    recipes_map: &HashMap<u32, Recipe>,
     items_map: &HashMap<u32, api::Item>,
     tp_listings_map: &HashMap<u32, api::ItemListings>,
     mut purchased_ingredients: Option<&mut HashMap<(u32, Source), Rational32>>,
@@ -471,6 +473,93 @@ impl From<api::ItemListings> for ItemListings {
 impl Listing {
     pub fn unit_price_minus_fees(&self) -> Rational32 {
         api::apply_trading_post_sales_commission(self.unit_price)
+    }
+}
+
+#[derive(Debug)]
+pub struct Recipe {
+    pub id: Option<u32>,
+    pub output_item_id: u32,
+    pub output_item_count: i32,
+    pub disciplines: Vec<String>,
+    pub ingredients: Vec<api::RecipeIngredient>,
+}
+
+impl From<api::Recipe> for Recipe {
+    fn from(recipe: api::Recipe) -> Self {
+        Recipe {
+            id: Some(recipe.id),
+            output_item_id: recipe.output_item_id,
+            output_item_count: recipe.output_item_count,
+            disciplines: recipe.disciplines,
+            ingredients: recipe.ingredients,
+        }
+    }
+}
+
+impl TryFrom<gw2efficiency::Recipe> for Recipe {
+    type Error = String;
+
+    fn try_from(recipe: gw2efficiency::Recipe) -> Result<Self, Self::Error> {
+        let output_item_count = if let Some(count) = recipe.output_item_count {
+            count
+        } else {
+            return Err(format!(
+                "Ignoring '{}'. Failed to parse 'output_item_count' as integer.",
+                recipe.name
+            ));
+        };
+        Ok(Recipe {
+            id: None,
+            output_item_id: recipe.output_item_id,
+            output_item_count,
+            disciplines: recipe.disciplines,
+            ingredients: recipe.ingredients,
+        })
+    }
+}
+
+impl Recipe {
+    // see https://wiki.guildwars2.com/wiki/Category:Time_gated_recipes
+    // for a list of time gated recipes
+    // I've left Charged Quartz Crystals off the list, since they can
+    // drop from containers.
+    pub fn is_timegated(&self) -> bool {
+        self.output_item_id == 46740         // Spool of Silk Weaving Thread
+            || self.output_item_id == 46742  // Lump of Mithrillium
+            || self.output_item_id == 46744  // Glob of Elder Spirit Residue
+            || self.output_item_id == 46745  // Spool of Thick Elonian Cord
+            || self.output_item_id == 66913  // Clay Pot
+            || self.output_item_id == 66917  // Plate of Meaty Plant Food
+            || self.output_item_id == 66923  // Plate of Piquant Plan Food
+            || self.output_item_id == 67015  // Heat Stone
+            || self.output_item_id == 67377  // Vial of Maize Balm
+            || self.output_item_id == 79726  // Dragon Hatchling Doll Eye
+            || self.output_item_id == 79763  // Gossamer Stuffing
+            || self.output_item_id == 79790  // Dragon Hatchling Doll Hide
+            || self.output_item_id == 79795  // Dragon Hatchling Doll Adornments
+            || self.output_item_id == 79817 // Dragon Hatchling Doll Frame
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mock<const A1: usize, const A2: usize>(
+        id: u32,
+        output_item_id: u32,
+        output_item_count: i32,
+        disciplines: [&str; A1],
+        ingredients: [RecipeIngredient; A2],
+    ) -> Self {
+        Recipe {
+            id,
+            output_item_id,
+            output_item_count,
+            disciplines: disciplines
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
+            ingredients: Vec::from(ingredients),
+            ..Default::default()
+        }
     }
 }
 

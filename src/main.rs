@@ -11,6 +11,7 @@ use std::path::PathBuf;
 
 mod api;
 mod crafting;
+mod gw2efficiency;
 mod request;
 #[cfg(test)]
 mod tests;
@@ -76,7 +77,7 @@ struct OutputRow {
     name: String,
     disciplines: String,
     item_id: u32,
-    recipe_id: u32,
+    recipe_id: Option<u32>,
     total_profit: i32,
     number_required: i32,
     profit_per_item: i32,
@@ -113,19 +114,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let cache_dir = create_cache_dir(&opt)?;
-    let mut recipes_path = cache_dir.clone();
-    recipes_path.push("recipes.bin");
+    let mut api_recipes_path = cache_dir.clone();
+    api_recipes_path.push("recipes.bin");
     let mut items_path = cache_dir.clone();
     items_path.push("items.bin");
 
     if opt.reset_cache {
-        if recipes_path.exists() {
+        if api_recipes_path.exists() {
             println!(
                 "Removing existing cache file at '{}'",
-                recipes_path.display()
+                api_recipes_path.display()
             );
-            std::fs::remove_file(&recipes_path)
-                .map_err(|e| format!("Failed to remove '{}' ({})", recipes_path.display(), e))?;
+            std::fs::remove_file(&api_recipes_path).map_err(|e| {
+                format!("Failed to remove '{}' ({})", api_recipes_path.display(), e)
+            })?;
         }
         if items_path.exists() {
             println!("Removing existing cache file at '{}'", items_path.display());
@@ -135,12 +137,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Loading recipes");
-    let recipes: Vec<api::Recipe> =
-        request::ensure_paginated_cache(&recipes_path, "recipes").await?;
+    let api_recipes: Vec<api::Recipe> =
+        request::ensure_paginated_cache(&api_recipes_path, "recipes").await?;
     println!(
         "Loaded {} recipes cached at '{}'",
-        recipes.len(),
-        recipes_path.display()
+        api_recipes.len(),
+        api_recipes_path.display()
     );
 
     println!("Loading items");
@@ -151,6 +153,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         items_path.display()
     );
 
+    println!("Loading custom recipes");
+    let custom_recipes: Vec<gw2efficiency::Recipe> = gw2efficiency::fetch_custom_recipes()
+        .await
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to fetch custom recipes: {}", e);
+            vec![]
+        });
+    println!("Loaded {} custom recipes", custom_recipes.len());
+
+    let recipes: Vec<crafting::Recipe> = custom_recipes
+        .into_iter()
+        .map(std::convert::TryFrom::try_from)
+        .filter_map(|result: Result<crafting::Recipe, _>| match result {
+            Ok(recipe) => {
+                for discipline in &recipe.disciplines {
+                    // ignore mystic forge recipes because we can't handle recursion
+                    if !VALID_DISCIPLINES.contains(&discipline.as_str()) {
+                        return None;
+                    }
+                }
+                Some(recipe)
+            }
+            Err(e) => {
+                eprintln!("{}", e);
+                None
+            }
+        })
+        // prefer api recipes over custom recipes if they share the same output item id, by inserting them later
+        .chain(api_recipes.into_iter().map(std::convert::From::from))
+        .collect();
     let recipes_map = vec_to_map(recipes, |x| x.output_item_id);
     let items_map = vec_to_map(items, |x| x.id);
 
@@ -238,8 +270,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("============");
         println!(
             "Crafting steps: https://gw2efficiency.com/crafting/calculator/a~1!b~1!c~1!d~{}-{}",
-            profitable_item.count,
-            item_id
+            profitable_item.count, item_id
         );
 
         return Ok(());
@@ -424,7 +455,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             output_row.name,
             output_row.disciplines,
             format!("{}", output_row.item_id),
-            format!("{}", output_row.recipe_id),
+            format!(
+                "{}",
+                output_row
+                    .recipe_id
+                    .map(|id| id.to_string())
+                    .unwrap_or_else(|| "".to_string())
+            ),
             copper_to_string(output_row.total_profit),
             format!(
                 "{} item{}",
@@ -500,7 +537,7 @@ where
 
 fn collect_ingredient_ids(
     item_id: u32,
-    recipes_map: &HashMap<u32, api::Recipe>,
+    recipes_map: &HashMap<u32, crafting::Recipe>,
     ids: &mut Vec<u32>,
 ) {
     if let Some(recipe) = recipes_map.get(&item_id) {
