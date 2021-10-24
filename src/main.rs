@@ -6,7 +6,7 @@ use rayon::prelude::*;
 use serde::{Serialize, Serializer};
 use structopt::StructOpt;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 mod api;
@@ -26,6 +26,7 @@ const VALID_DISCIPLINES: &[&str] = &[
     "Scribe",
     "Tailor",
     "Weaponsmith",
+    "Mystic Forge",
 ];
 
 const ITEM_STACK_SIZE: i32 = 250; // GW2 uses a "stack size" of 250
@@ -166,15 +167,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .into_iter()
         .map(std::convert::TryFrom::try_from)
         .filter_map(|result: Result<crafting::Recipe, _>| match result {
-            Ok(recipe) => {
-                for discipline in &recipe.disciplines {
-                    // ignore mystic forge recipes because we can't handle recursion
-                    if !VALID_DISCIPLINES.contains(&discipline.as_str()) {
-                        return None;
-                    }
-                }
-                Some(recipe)
-            }
+            Ok(recipe) => Some(recipe),
             Err(e) => {
                 eprintln!("{}", e);
                 None
@@ -183,8 +176,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // prefer api recipes over custom recipes if they share the same output item id, by inserting them later
         .chain(api_recipes.into_iter().map(std::convert::From::from))
         .collect();
-    let recipes_map = vec_to_map(recipes, |x| x.output_item_id);
+    let mut recipes_map = vec_to_map(recipes, |x| x.output_item_id);
     let items_map = vec_to_map(items, |x| x.id);
+
+    let recursive_recipes = mark_recursive_recipes(&recipes_map);
+    for recipe_id in recursive_recipes.into_iter() {
+        recipes_map.remove(&recipe_id);
+    }
 
     let crafting_options = crafting::CraftingOptions {
         include_timegated: opt.include_timegated,
@@ -306,6 +304,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
         }
+
         // some items are craftable and have no listed restrictions but are still not listable on tp
         // e.g. 39417, 79557
         // conversely, some items have a NoSell flag but are listable on the trading post
@@ -427,7 +426,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .disciplines
                 .iter()
                 .map(|s| {
-                    if &s[..1] == "A" {
+                    if s == "Mystic Forge" {
+                        return "My".to_string();
+                    } else if &s[..1] == "A" {
                         // take 1st and 3rd characters to distinguish armorer/artificer
                         format!("{}{}", &s[..1], &s[2..3])
                     } else {
@@ -535,6 +536,53 @@ where
     map
 }
 
+fn mark_recursive_recipes(recipes_map: &HashMap<u32, crafting::Recipe>) -> HashSet<u32> {
+    let mut set = HashSet::new();
+    for (recipe_id, recipe) in recipes_map {
+        mark_recursive_recipes_internal(
+            *recipe_id,
+            recipe.output_item_id,
+            recipes_map,
+            &mut vec![],
+            &mut set,
+        );
+    }
+    set
+}
+
+fn mark_recursive_recipes_internal(
+    item_id: u32,
+    search_output_item_id: u32,
+    recipes_map: &HashMap<u32, crafting::Recipe>,
+    ingredients_stack: &mut Vec<u32>,
+    set: &mut HashSet<u32>,
+) {
+    if set.contains(&item_id) {
+        return;
+    }
+    if let Some(recipe) = recipes_map.get(&item_id) {
+        for ingredient in &recipe.ingredients {
+            if ingredient.item_id == search_output_item_id {
+                set.insert(recipe.output_item_id);
+                return;
+            }
+            // skip unnecessary recursion
+            if ingredients_stack.contains(&ingredient.item_id) {
+                continue;
+            }
+            ingredients_stack.push(ingredient.item_id);
+            mark_recursive_recipes_internal(
+                ingredient.item_id,
+                search_output_item_id,
+                recipes_map,
+                ingredients_stack,
+                set,
+            );
+            ingredients_stack.pop();
+        }
+    }
+}
+
 fn collect_ingredient_ids(
     item_id: u32,
     recipes_map: &HashMap<u32, crafting::Recipe>,
@@ -542,6 +590,9 @@ fn collect_ingredient_ids(
 ) {
     if let Some(recipe) = recipes_map.get(&item_id) {
         for ingredient in &recipe.ingredients {
+            if ids.contains(&ingredient.item_id) {
+                continue;
+            }
             ids.push(ingredient.item_id);
             collect_ingredient_ids(ingredient.item_id, recipes_map, ids);
         }
