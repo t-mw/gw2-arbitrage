@@ -3,10 +3,9 @@
 # - Release with `make release`.
 # NB: CHANGELOG is only generated for v0.6 onwards since this is when conventional commits started being used.
 
+.PHONY: debug
 debug:
 	cargo build
-
-.PHONY: release
 release:
 	cargo clippy -- -D warnings
 	convco check v0.5.1..HEAD
