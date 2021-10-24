@@ -28,8 +28,7 @@ The shopping list will also include items that should be purchased from crafting
     By default the shopping list will assume that you want to produce as many copies of the item as can be profitably sold on the trading post.
     To limit the number of items that will be crafted a count may also be passed (e.g. `gw2-arbitrage.exe 11538 --count 100` will limit the shopping list to producing 100 items).
 
-1. Detailed crafting instructions for the item can then be found on https://gw2efficiency.com/crafting/calculator/.
-   To see prices that match the output of this tool select `sell price ("instant buy")` from the `Material price` dropdown, but be aware that the gw2efficiency calculator will not show accurate profits for large amounts of items due to the liquidity issue explained below.
+1. Detailed crafting instructions for the item can then be found on https://gw2efficiency.com/crafting/calculator/ or https://www.gw2bltc.com/, with the caveat that these sites do not account for [liquidity](#effects-of-low-liquidity) when crafting large amounts of items. This means that the shopping list and profits shown will not always be accurate, and you may need to adapt the crafting instructions to use exactly the ingredients printed by this tool.
 
 **Important**: Check that you have the recipe for the item before spending any money. Some profitable opportunities listed by the tool exist because the recipes are difficult to obtain.
 
