@@ -232,7 +232,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         println!(
             "Min sell price per unit: {}",
-            copper_to_string(profitable_item.min_price().to_integer())
+            copper_to_string(profitable_item.min_price())
         );
         println!("============");
         for ((ingredient_id, ingredient_source), ingredient_count_ratio) in &purchased_ingredients {
