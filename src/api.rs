@@ -68,6 +68,14 @@ pub struct Item {
 }
 
 impl Item {
+    pub fn display_name(&self) -> String {
+        if &self.type_name == "Trinket" {
+            format!("{} ({})", &self.name, &self.rarity)
+        } else {
+            self.name.clone()
+        }
+    }
+
     pub fn vendor_cost(&self) -> Option<i32> {
         let name = &self.name;
 
