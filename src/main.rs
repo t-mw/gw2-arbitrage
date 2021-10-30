@@ -229,7 +229,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "Shopping list for {} x {} = {} profit ({} / step)",
             profitable_item.count,
-            &item.display_name(),
+            &item,
             copper_to_string(profitable_item.profit.to_integer()),
             profitable_item.profit_per_crafting_step().to_integer()
         );
@@ -256,7 +256,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ingredient_count_msg,
                 items_map
                     .get(ingredient_id)
-                    .map(|item| item.display_name())
+                    .map(|item| item.to_string())
                     .unwrap_or("???".to_string()),
                 if *ingredient_source == crafting::Source::Vendor {
                     " (vendor)"
@@ -415,7 +415,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let item_id = profitable_item.id;
         let name = items_map
             .get(&item_id)
-            .map(|item| item.display_name())
+            .map(|item| item.to_string())
             .unwrap_or("???".to_string());
 
         let recipe = recipes_map.get(&item_id).expect("Missing recipe");

@@ -1,5 +1,6 @@
 use num_rational::Rational32;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 const TRADING_POST_SALES_COMMISSION: i32 = 15; // %
 
@@ -68,14 +69,6 @@ pub struct Item {
 }
 
 impl Item {
-    pub fn display_name(&self) -> String {
-        if &self.type_name == "Trinket" {
-            format!("{} ({})", &self.name, &self.rarity)
-        } else {
-            self.name.clone()
-        }
-    }
-
     pub fn vendor_cost(&self) -> Option<i32> {
         let name = &self.name;
 
@@ -146,6 +139,16 @@ impl Item {
             name: name.to_string(),
             vendor_value,
             ..Default::default()
+        }
+    }
+}
+
+impl fmt::Display for Item {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if &self.type_name == "Trinket" {
+            write!(f, "{} ({})", &self.name, &self.rarity)
+        } else {
+            write!(f, "{}", &self.name)
         }
     }
 }
