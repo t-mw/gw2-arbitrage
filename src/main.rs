@@ -256,8 +256,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ingredient_count_msg,
                 items_map
                     .get(ingredient_id)
-                    .map(|item| item.to_string())
-                    .unwrap_or("???".to_string()),
+                    .map_or_else(|| "???".to_string(), |item| item.to_string()),
                 if *ingredient_source == crafting::Source::Vendor {
                     " (vendor)"
                 } else {
@@ -415,8 +414,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let item_id = profitable_item.id;
         let name = items_map
             .get(&item_id)
-            .map(|item| item.to_string())
-            .unwrap_or("???".to_string());
+            .map_or_else(|| "???".to_string(), |item| item.to_string());
 
         let recipe = recipes_map.get(&item_id).expect("Missing recipe");
 
