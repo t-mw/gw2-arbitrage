@@ -1,5 +1,6 @@
 use num_rational::Rational32;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 const TRADING_POST_SALES_COMMISSION: i32 = 15; // %
 
@@ -138,6 +139,18 @@ impl Item {
             name: name.to_string(),
             vendor_value,
             ..Default::default()
+        }
+    }
+}
+
+// When printing an item, add rarity if a trinket, as most trinkets use the same
+// name for different rarities
+impl fmt::Display for Item {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if &self.type_name == "Trinket" {
+            write!(f, "{} ({})", &self.name, &self.rarity)
+        } else {
+            write!(f, "{}", &self.name)
         }
     }
 }
