@@ -143,6 +143,8 @@ impl Item {
     }
 }
 
+// When printing an item, add rarity if a trinket, as most trinkets use the same
+// name for different rarities
 impl fmt::Display for Item {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if &self.type_name == "Trinket" {
