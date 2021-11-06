@@ -1,6 +1,8 @@
 use crate::api;
 use crate::gw2efficiency;
 
+use serde::{Serialize, Deserialize};
+
 use num_rational::Rational32;
 use num_traits::{Signed, Zero};
 
@@ -476,7 +478,7 @@ impl Listing {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Recipe {
     pub id: Option<u32>,
     pub output_item_id: u32,
