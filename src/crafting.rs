@@ -231,6 +231,7 @@ pub fn calculate_crafting_profit(
     let mut total_crafting_cost = Rational32::zero();
     let mut crafting_count = 0;
     let mut total_crafting_steps = Rational32::zero();
+    let mut min_price = Rational32::zero();
 
     // simulate crafting 1 item per loop iteration until it becomes unprofitable
     loop {
@@ -277,6 +278,7 @@ pub fn calculate_crafting_profit(
             listing_profit += profit;
             total_crafting_cost += crafting_cost;
             crafting_count += output_item_count;
+            min_price = buy_price / output_item_count;
         } else {
             break;
         }
@@ -323,6 +325,7 @@ pub fn calculate_crafting_profit(
             crafting_steps: total_crafting_steps,
             profit: listing_profit,
             count: crafting_count,
+            min_price: api::trading_post_price_for_revenue(min_price),
         })
     } else {
         None
@@ -336,17 +339,12 @@ pub struct ProfitableItem {
     pub crafting_steps: Rational32,
     pub count: i32,
     pub profit: Rational32,
+    pub min_price: i32,
 }
 
 impl ProfitableItem {
     pub fn profit_per_item(&self) -> Rational32 {
         self.profit / Rational32::from(self.count)
-    }
-
-    pub fn min_price(&self) -> i32 {
-        api::trading_post_price_for_revenue(
-            (self.crafting_cost / Rational32::from(self.count)).to_integer()
-        )
     }
 
     pub fn profit_per_crafting_step(&self) -> Rational32 {

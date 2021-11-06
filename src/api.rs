@@ -7,8 +7,8 @@ const TRADING_POST_SALES_COMMISSION: i32 = 15; // %
 pub fn apply_trading_post_sales_commission(v: i32) -> Rational32 {
     Rational32::new(100 - TRADING_POST_SALES_COMMISSION, 100) * v
 }
-pub fn trading_post_price_for_revenue(v: i32) -> i32 {
-    (Rational32::new(100 + TRADING_POST_SALES_COMMISSION, 100) * v).to_integer()
+pub fn trading_post_price_for_revenue(v: Rational32) -> i32 {
+    (v / Rational32::new(100 - TRADING_POST_SALES_COMMISSION, 100)).to_integer()
 }
 
 // types for /commerce/prices
