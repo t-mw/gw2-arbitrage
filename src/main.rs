@@ -96,6 +96,16 @@ where
     serializer.serialize_f64((PRECISION * value.to_f64().unwrap_or(0.0)).round() / PRECISION)
 }
 
+fn remove_cache_file(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>>
+{
+    if file.exists() {
+        println!("Removing existing cache file at '{}'", file.display());
+        std::fs::remove_file(&file)
+            .map_err(|e| format!("Failed to remove '{}' ({})", file.display(), e))?;
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opt = Opt::from_args();
@@ -119,22 +129,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     api_recipes_path.push("recipes.bin");
     let mut items_path = cache_dir.clone();
     items_path.push("items.bin");
+    let mut custom_recipes_path = cache_dir.clone();
+    custom_recipes_path.push("custom.bin");
 
     if opt.reset_cache {
-        if api_recipes_path.exists() {
-            println!(
-                "Removing existing cache file at '{}'",
-                api_recipes_path.display()
-            );
-            std::fs::remove_file(&api_recipes_path).map_err(|e| {
-                format!("Failed to remove '{}' ({})", api_recipes_path.display(), e)
-            })?;
-        }
-        if items_path.exists() {
-            println!("Removing existing cache file at '{}'", items_path.display());
-            std::fs::remove_file(&items_path)
-                .map_err(|e| format!("Failed to remove '{}' ({})", items_path.display(), e))?;
-        }
+        remove_cache_file(&api_recipes_path)?;
+        remove_cache_file(&items_path)?;
+        remove_cache_file(&custom_recipes_path)?;
     }
 
     println!("Loading recipes");
@@ -155,24 +156,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("Loading custom recipes");
-    let custom_recipes: Vec<gw2efficiency::Recipe> = gw2efficiency::fetch_custom_recipes()
+    let custom_recipes: Vec<crafting::Recipe> = gw2efficiency::fetch_custom_recipes(&custom_recipes_path)
         .await
         .unwrap_or_else(|e| {
             eprintln!("Failed to fetch custom recipes: {}", e);
             vec![]
         });
-    println!("Loaded {} custom recipes", custom_recipes.len());
+    println!(
+        "Loaded {} custom recipes cached at '{}'",
+        custom_recipes.len(),
+        custom_recipes_path.display()
+    );
 
     let recipes: Vec<crafting::Recipe> = custom_recipes
         .into_iter()
-        .map(std::convert::TryFrom::try_from)
-        .filter_map(|result: Result<crafting::Recipe, _>| match result {
-            Ok(recipe) => Some(recipe),
-            Err(e) => {
-                eprintln!("{}", e);
-                None
-            }
-        })
         // prefer api recipes over custom recipes if they share the same output item id, by inserting them later
         .chain(api_recipes.into_iter().map(std::convert::From::from))
         .collect();
