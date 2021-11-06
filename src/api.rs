@@ -117,13 +117,8 @@ impl Item {
     }
 
     pub fn is_restricted(&self) -> bool {
-        // TODO: ban the bad recipes, not outputs
-        // 24749 == legacy Major Rune of the Air
-        // 24748 == legacy Minor Rune of the Air
         // 76363 == legacy catapult schematic
-        self.id == 24749
-            || self.id == 24748
-            || self.id == 76363
+        self.id == 76363
             || self
                 .flags
                 .iter()
