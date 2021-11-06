@@ -139,7 +139,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Loading recipes");
     let api_recipes = {
-        let mut api_recipes: Vec<api::Recipe> = request::ensure_paginated_cache(&api_recipes_path, "recipes").await?;
+        let mut api_recipes: Vec<api::Recipe> = request::ensure_paginated_cache(
+            &api_recipes_path, "recipes"
+        ).await?;
         // Blacklist a couple of known bad recipes
         for id in vec![2812, 2825] {
             if let Some(pos) = api_recipes.iter().position(|r| r.id == id) {
