@@ -14,6 +14,7 @@ pub struct CraftingOptions {
     pub include_timegated: bool,
     pub include_ascended: bool,
     pub count: Option<i32>,
+    pub threshold: Option<u32>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -310,7 +311,7 @@ pub fn calculate_crafting_profit(
         };
 
         let profit = buy_price - crafting_cost;
-        if profit.is_positive() {
+        if profit >= Rational32::from(opt.threshold.unwrap_or(0) as i32) {
             listing_profit += profit;
             total_crafting_cost += crafting_cost;
             crafting_count += output_item_count;
