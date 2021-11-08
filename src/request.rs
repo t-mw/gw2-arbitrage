@@ -5,9 +5,11 @@ use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
 use futures::{stream, StreamExt};
+use serde_json;
 
 use std::fs::File;
 use std::path::Path;
+use std::collections::HashSet;
 
 const PARALLEL_REQUESTS: usize = 10;
 const MAX_PAGE_SIZE: i32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
@@ -157,4 +159,10 @@ where
     }
 
     Ok(result)
+}
+
+pub async fn fetch_account_recipes(key: &str) -> Result<HashSet<u32>, Box<dyn std::error::Error>> {
+    let url = format!("https://api.guildwars2.com/v2/account/recipes?access_token={}", key);
+    println!("Fetching {}", url);
+    Ok(reqwest::get(url).await?.json().await?)
 }

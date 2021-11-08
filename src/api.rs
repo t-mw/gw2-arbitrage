@@ -48,6 +48,15 @@ pub struct Recipe {
     chat_link: String,
 }
 
+impl Recipe {
+    pub fn is_purchased(&self) -> bool {
+        self.flags.contains(&"LearnedFromItem".to_string())
+    }
+    pub fn is_automatic(&self) -> bool {
+        self.flags.contains(&"AutoLearned".to_string())
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RecipeIngredient {
     pub item_id: u32,

@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 use num_rational::Rational32;
 use num_traits::{Signed, Zero};
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 
 #[derive(Debug, Default)]
@@ -101,13 +101,38 @@ struct PreciseCraftingCostContext {
     crafting_steps: Rational32,
 }
 
+// Check if we can craft this
+fn used_recipe(
+    recipe: &Recipe, known_recipes: &Option<HashSet<u32>>,
+    used_recipes: &mut HashMap<u32, bool>
+) -> () {
+    if let Some(id) = recipe.id {
+        if !used_recipes.contains_key(&id) {
+            match recipe.source {
+                // Not included in the API
+                RecipeSource::Automatic | RecipeSource::Discovered => {
+                    // TODO: check if account has a char with the required crafting level
+                    used_recipes.insert(id, true);
+                }
+                _ => {
+                    if let Some(known_recipes) = known_recipes {
+                        used_recipes.insert(id, known_recipes.contains(&id));
+                    }
+                }
+            }
+        }
+    }
+}
+
 // Calculate the lowest cost method to obtain the given item, with simulated purchases from
 // the trading post.
 fn calculate_precise_min_crafting_cost(
     item_id: u32,
     item_count: Rational32,
     recipes_map: &HashMap<u32, Recipe>,
+    known_recipes: &Option<HashSet<u32>>,
     items_map: &HashMap<u32, api::Item>,
+    mut used_recipes: &mut HashMap<u32, bool>,
     tp_listings_map: &mut BTreeMap<u32, ItemListings>,
     context: &mut PreciseCraftingCostContext,
     opt: &CraftingOptions,
@@ -133,7 +158,9 @@ fn calculate_precise_min_crafting_cost(
                     ingredient.item_id,
                     ingredient_count,
                     recipes_map,
+                    known_recipes,
                     items_map,
+                    used_recipes,
                     tp_listings_map,
                     context,
                     opt,
@@ -148,6 +175,9 @@ fn calculate_precise_min_crafting_cost(
                     return None;
                 }
             }
+
+            used_recipe(&recipe, &known_recipes, &mut used_recipes);
+
             Some(cost)
         }
     });
@@ -213,6 +243,7 @@ pub enum Source {
 pub fn calculate_crafting_profit(
     item_id: u32,
     recipes_map: &HashMap<u32, Recipe>,
+    known_recipes: &Option<HashSet<u32>>,
     items_map: &HashMap<u32, api::Item>,
     tp_listings_map: &HashMap<u32, api::ItemListings>,
     mut purchased_ingredients: Option<&mut HashMap<(u32, Source), Rational32>>,
@@ -231,6 +262,7 @@ pub fn calculate_crafting_profit(
     let mut total_crafting_cost = Rational32::zero();
     let mut crafting_count = 0;
     let mut total_crafting_steps = Rational32::zero();
+    let mut used_recipes = HashMap::new();
 
     let mut min_sell = 0;
     let max_sell = tp_listings_map.get(&item_id)
@@ -258,7 +290,9 @@ pub fn calculate_crafting_profit(
             item_id,
             output_item_count.into(),
             recipes_map,
+            known_recipes,
             items_map,
+            &mut used_recipes,
             &mut tp_listings_map,
             &mut context,
             opt,
@@ -332,6 +366,7 @@ pub fn calculate_crafting_profit(
             crafting_steps: total_crafting_steps,
             profit: listing_profit,
             count: crafting_count,
+            used_recipes,
             max_sell: max_sell,
             min_sell: min_sell,
             breakeven: api::add_trading_post_sales_commission(breakeven),
@@ -348,6 +383,7 @@ pub struct ProfitableItem {
     pub crafting_steps: Rational32,
     pub count: i32,
     pub profit: Rational32,
+    pub used_recipes: HashMap<u32, bool>, // id -> known/unknown
     pub max_sell: i32,
     pub min_sell: i32,
     pub breakeven: i32,
@@ -496,22 +532,39 @@ impl Listing {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+enum RecipeSource {
+    Automatic,
+    Discovered,
+    Purchase,
+    Achievement,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Recipe {
     pub id: Option<u32>,
     pub output_item_id: u32,
     pub output_item_count: i32,
     pub disciplines: Vec<String>,
     pub ingredients: Vec<api::RecipeIngredient>,
+    source: RecipeSource,
 }
 
 impl From<api::Recipe> for Recipe {
     fn from(recipe: api::Recipe) -> Self {
+        let source = if recipe.is_purchased() {
+            RecipeSource::Purchase
+        } else if recipe.is_automatic() {
+            RecipeSource::Automatic
+        } else {
+            RecipeSource::Discovered
+        };
         Recipe {
             id: Some(recipe.id),
             output_item_id: recipe.output_item_id,
             output_item_count: recipe.output_item_count,
             disciplines: recipe.disciplines,
             ingredients: recipe.ingredients,
+            source,
         }
     }
 }
@@ -528,12 +581,21 @@ impl TryFrom<gw2efficiency::Recipe> for Recipe {
                 recipe.name
             ));
         };
+        // Any disciplines _except_ Achievement can be counted as known
+        // There are a few for regular disciplines, but they are mostly account bound for leg weapons
+        // Some Scribe WvW BPs which are useful too
+        let source = if recipe.disciplines.contains(&"Achievement".to_string()) {
+            RecipeSource::Achievement
+        } else {
+            RecipeSource::Automatic
+        };
         Ok(Recipe {
             id: None,
             output_item_id: recipe.output_item_id,
             output_item_count,
             disciplines: recipe.disciplines,
             ingredients: recipe.ingredients,
+            source,
         })
     }
 }

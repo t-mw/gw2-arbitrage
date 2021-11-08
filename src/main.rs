@@ -3,11 +3,14 @@ use num_rational::Rational32;
 use num_traits::ToPrimitive;
 use once_cell::sync::Lazy;
 use rayon::prelude::*;
-use serde::{Serialize, Serializer};
+use serde::{Serialize, Serializer, Deserialize};
 use structopt::StructOpt;
+use toml;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::fs::File;
+use std::io::Read;
 
 mod api;
 mod crafting;
@@ -84,7 +87,7 @@ struct OutputRow {
     name: String,
     disciplines: String,
     item_id: u32,
-    recipe_id: Option<u32>,
+    unknown_recipes: Vec<u32>,
     total_profit: i32,
     number_required: i32,
     profit_per_item: i32,
@@ -112,9 +115,30 @@ fn remove_cache_file(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
+#[derive(Debug, Deserialize)]
+struct Config {
+    api_key: Option<String>,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opt = Opt::from_args();
+
+    // API key requires scope unlocks
+    let conf: Config = if let Ok(mut file) = File::open(config_file()?) {
+        let mut s = String::new();
+        file.read_to_string(&mut s)?;
+        toml::from_str(&s)?
+    } else {
+        Config{
+            api_key: None
+        }
+    };
+    let known_recipes = if let Some(key) = conf.api_key {
+        Some(request::fetch_account_recipes(&key).await?)
+    } else {
+        None
+    };
 
     let filter_disciplines = opt.filter_disciplines.as_ref().filter(|v| !v.is_empty());
     if let Some(filter_disciplines) = filter_disciplines {
@@ -220,6 +244,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let profitable_item = crafting::calculate_crafting_profit(
             item_id,
             &recipes_map,
+            &known_recipes,
             &items_map,
             &tp_listings_map,
             Some(&mut purchased_ingredients),
@@ -295,6 +320,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Crafting steps: https://gw2efficiency.com/crafting/calculator/a~1!b~1!c~1!d~{}-{}",
             profitable_item.count, item_id
         );
+
+        let unknown_recipes: Vec<u32> = profitable_item.used_recipes.iter().filter_map(|(k, v)| {
+            if !*v {
+                Some(*k)
+            } else {
+                None
+            }
+        }).collect();
+        if unknown_recipes.len() > 0 {
+            println!(
+                "You don't know how to craft this yet. Missing recipe{}: {}",
+                if unknown_recipes.len() > 1 { "s" } else { "" },
+                unknown_recipes.iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            );
+        }
 
         return Ok(());
     }
@@ -386,6 +429,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             crafting::calculate_crafting_profit(
                 *item_id,
                 &recipes_map,
+                &known_recipes,
                 &items_map,
                 &tp_listings_map_for_item,
                 None,
@@ -417,7 +461,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Name",
         "Disciplines",
         "Item id",
-        "Recipe id",
+        "Unk Recipe id",
         "Total profit",
         "No. required",
         "Profit / item",
@@ -462,7 +506,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect::<Vec<_>>()
                 .join("/"),
             item_id,
-            recipe_id: recipe.id,
+            unknown_recipes: profitable_item.used_recipes.iter().filter_map(|(k, v)| {
+                if !*v {
+                    Some(*k)
+                } else {
+                    None
+                }
+            }).collect(),
             total_profit: profitable_item.profit.to_integer(),
             number_required: profitable_item.count,
             profit_per_item: profitable_item.profit_per_item().to_integer(),
@@ -480,12 +530,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             output_row.name,
             output_row.disciplines,
             format!("{}", output_row.item_id),
-            format!(
-                "{}",
-                output_row
-                    .recipe_id
-                    .map(|id| id.to_string())
-                    .unwrap_or_else(|| "".to_string())
+            format!("{}", output_row.unknown_recipes.iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>()
+                .join(",")
             ),
             copper_to_string(output_row.total_profit),
             format!(
@@ -546,6 +594,21 @@ fn cache_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
             cache_dir
         })
         .or_else(|| std::env::current_dir().ok())
+        .ok_or_else(|| "Failed to access current working directory".into())
+}
+
+fn config_file() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    dirs::config_dir()
+        .filter(|d| d.exists())
+        .map(|mut config_dir| {
+            config_dir.push("gw2-arbitrage");
+            config_dir
+        })
+        .or_else(|| std::env::current_dir().ok())
+        .and_then(|mut path| {
+            path.push("gw2-arbitrage.toml");
+            Some(path)
+        })
         .ok_or_else(|| "Failed to access current working directory".into())
 }
 
