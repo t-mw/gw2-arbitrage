@@ -150,7 +150,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ).await?;
         for &id in RECIPE_BACKLIST_IDS {
             if let Some(pos) = api_recipes.iter().position(|r| r.id == id) {
-                api_recipes.remove(pos);
+                api_recipes.swap_remove(pos);
             }
         }
         api_recipes
