@@ -117,10 +117,8 @@ impl Item {
     }
 
     pub fn is_restricted(&self) -> bool {
-        // 24749 == legacy Major Rune of the Air
         // 76363 == legacy catapult schematic
-        self.id == 24749
-            || self.id == 76363
+        self.id == 76363
             || self
                 .flags
                 .iter()

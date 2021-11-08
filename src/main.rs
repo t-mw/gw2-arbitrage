@@ -31,6 +31,12 @@ const VALID_DISCIPLINES: &[&str] = &[
 
 const ITEM_STACK_SIZE: i32 = 250; // GW2 uses a "stack size" of 250
 
+// ignore inaccurate recipes: https://github.com/gw2efficiency/issues/issues/1532
+const RECIPE_BACKLIST_IDS: &[u32] = &[
+    2812,  // Minor Rune of the Air
+    2825,  // Major Rune of the Air
+];
+
 #[derive(StructOpt, Debug)]
 struct Opt {
     /// Include timegated recipes such as Deldrimor Steel Ingot
@@ -139,8 +145,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Loading recipes");
-    let api_recipes: Vec<api::Recipe> =
-        request::ensure_paginated_cache(&api_recipes_path, "recipes").await?;
+    let api_recipes = {
+        let mut api_recipes: Vec<api::Recipe> = request::ensure_paginated_cache(
+            &api_recipes_path, "recipes"
+        ).await?;
+        for &id in RECIPE_BACKLIST_IDS {
+            if let Some(pos) = api_recipes.iter().position(|r| r.id == id) {
+                api_recipes.swap_remove(pos);
+            }
+        }
+        api_recipes
+    };
     println!(
         "Loaded {} recipes cached at '{}'",
         api_recipes.len(),
