@@ -101,38 +101,14 @@ struct PreciseCraftingCostContext {
     crafting_steps: Rational32,
 }
 
-// Check if we can craft this
-fn used_recipe(
-    recipe: &Recipe, known_recipes: &Option<HashSet<u32>>,
-    used_recipes: &mut HashMap<u32, bool>
-) -> () {
-    if let Some(id) = recipe.id {
-        if !used_recipes.contains_key(&id) {
-            match recipe.source {
-                // Not included in the API
-                RecipeSource::Automatic | RecipeSource::Discovered => {
-                    // TODO: check if account has a char with the required crafting level
-                    used_recipes.insert(id, true);
-                }
-                _ => {
-                    if let Some(known_recipes) = known_recipes {
-                        used_recipes.insert(id, known_recipes.contains(&id));
-                    }
-                }
-            }
-        }
-    }
-}
-
 // Calculate the lowest cost method to obtain the given item, with simulated purchases from
 // the trading post.
 fn calculate_precise_min_crafting_cost(
     item_id: u32,
     item_count: Rational32,
     recipes_map: &HashMap<u32, Recipe>,
-    known_recipes: &Option<HashSet<u32>>,
     items_map: &HashMap<u32, api::Item>,
-    mut used_recipes: &mut HashMap<u32, bool>,
+    used_recipe: &mut dyn FnMut(&Recipe) -> (),
     tp_listings_map: &mut BTreeMap<u32, ItemListings>,
     context: &mut PreciseCraftingCostContext,
     opt: &CraftingOptions,
@@ -158,9 +134,8 @@ fn calculate_precise_min_crafting_cost(
                     ingredient.item_id,
                     ingredient_count,
                     recipes_map,
-                    known_recipes,
                     items_map,
-                    used_recipes,
+                    used_recipe,
                     tp_listings_map,
                     context,
                     opt,
@@ -176,7 +151,7 @@ fn calculate_precise_min_crafting_cost(
                 }
             }
 
-            used_recipe(&recipe, &known_recipes, &mut used_recipes);
+            used_recipe(&recipe);
 
             Some(cost)
         }
@@ -270,6 +245,26 @@ pub fn calculate_crafting_profit(
         .buys.last().map_or(0, |l| l.unit_price);
     let mut breakeven = Rational32::zero();
 
+    // Check if we can craft this
+    let mut used_recipe = |recipe: &Recipe| {
+        if let Some(id) = recipe.id {
+            if !&used_recipes.contains_key(&id) {
+                match recipe.source {
+                    // Not included in the API
+                    RecipeSource::Automatic | RecipeSource::Discovered => {
+                        // TODO: check if account has a char with the required crafting level
+                        used_recipes.insert(id, true);
+                    }
+                    _ => {
+                        if let Some(known_recipes) = known_recipes {
+                            used_recipes.insert(id, known_recipes.contains(&id));
+                        }
+                    }
+                }
+            }
+        }
+    };
+
     // simulate crafting 1 item per loop iteration until it becomes unprofitable
     loop {
         if let Some(count) = opt.count {
@@ -290,9 +285,8 @@ pub fn calculate_crafting_profit(
             item_id,
             output_item_count.into(),
             recipes_map,
-            known_recipes,
             items_map,
-            &mut used_recipes,
+            &mut used_recipe,
             &mut tp_listings_map,
             &mut context,
             opt,
