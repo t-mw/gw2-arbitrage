@@ -260,7 +260,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             copper_to_string(profitable_item.breakeven),
         );
         println!("============");
-        for ((ingredient_id, ingredient_source), ingredient_count_ratio) in &purchased_ingredients {
+        for ((ingredient_id, ingredient_source), (ingredient_count_ratio, min_price, max_price)) in &purchased_ingredients {
             let ingredient_count = ingredient_count_ratio.ceil().to_integer();
             let ingredient_count_msg = if ingredient_count > ITEM_STACK_SIZE {
                 let stack_count = ingredient_count / ITEM_STACK_SIZE;
@@ -277,17 +277,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 ingredient_count.to_string()
             };
+            let source_msg = match *ingredient_source {
+                crafting::Source::TradingPost => if *max_price == *min_price {
+                    format!(" (at {})", copper_to_string(*min_price))
+                } else {
+                    format!(
+                        " (at {} to {})",
+                        copper_to_string(*min_price),
+                        copper_to_string(*max_price),
+                    )
+                },
+                crafting::Source::Vendor => format!(
+                    " (vendor: {})", copper_to_string(items_map.get(ingredient_id).unwrap_or_else(|| {
+                        panic!("Missing item for ingredient {}", ingredient_id)
+                    }).vendor_cost().unwrap_or(0))
+                ),
+                crafting::Source::Crafting => "".to_string(),
+            };
             println!(
                 "{} {}{}",
                 ingredient_count_msg,
                 items_map
                     .get(ingredient_id)
                     .map_or_else(|| "???".to_string(), |item| item.to_string()),
-                if *ingredient_source == crafting::Source::Vendor {
-                    " (vendor)"
-                } else {
-                    ""
-                }
+                source_msg,
             );
         }
         println!("============");
