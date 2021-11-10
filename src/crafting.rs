@@ -334,7 +334,7 @@ pub fn calculate_crafting_profit(
             count: crafting_count,
             max_sell: max_sell,
             min_sell: min_sell,
-            breakeven: api::trading_post_price_for_revenue(breakeven),
+            breakeven: api::add_trading_post_sales_commission(breakeven),
         })
     } else {
         None
@@ -491,7 +491,7 @@ impl From<api::ItemListings> for ItemListings {
 
 impl Listing {
     pub fn unit_price_minus_fees(&self) -> Rational32 {
-        api::apply_trading_post_sales_commission(self.unit_price)
+        api::subtract_trading_post_sales_commission(self.unit_price)
     }
 }
 

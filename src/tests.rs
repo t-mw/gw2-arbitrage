@@ -122,7 +122,7 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
             crafting_cost: crafting_cost.into(),
             crafting_steps: 6.into(),
             count: 2.into(),
-            profit: api::apply_trading_post_sales_commission(7982220 + 7982200)
+            profit: api::subtract_trading_post_sales_commission(7982220 + 7982200)
                 - Rational32::from(crafting_cost),
         })
     );
@@ -191,7 +191,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
             crafting_cost: (43 + 90 + 92).into(),
             crafting_steps: 1.into(),
             count: 98.into(),
-            profit: api::apply_trading_post_sales_commission(200 + 199 * 50 + 198 * 47)
+            profit: api::subtract_trading_post_sales_commission(200 + 199 * 50 + 198 * 47)
                 - Rational32::from(43 + 90 + 92),
         })
     );
@@ -213,7 +213,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
             crafting_cost: crafting_cost.into(),
             crafting_steps: 32.into(),
             count: 96.into(),
-            profit: api::apply_trading_post_sales_commission(200 + 199 * 50 + 198 * 45)
+            profit: api::subtract_trading_post_sales_commission(200 + 199 * 50 + 198 * 45)
                 - Rational32::from(crafting_cost),
         })
     );
