@@ -231,7 +231,12 @@ pub fn calculate_crafting_profit(
     let mut total_crafting_cost = Rational32::zero();
     let mut crafting_count = 0;
     let mut total_crafting_steps = Rational32::zero();
-    let mut min_price = Rational32::zero();
+
+    let mut min_sell = 0;
+    let max_sell = tp_listings_map.get(&item_id)
+        .unwrap_or_else(|| panic!("Missing listings for item id: {}", item_id))
+        .buys.last().map_or(0, |l| l.unit_price);
+    let mut breakeven = Rational32::zero();
 
     // simulate crafting 1 item per loop iteration until it becomes unprofitable
     loop {
@@ -263,7 +268,7 @@ pub fn calculate_crafting_profit(
             break;
         };
 
-        let buy_price = if let Some(buy_price) = tp_listings_map
+        let (buy_price, min_buy) = if let Some(buy_price) = tp_listings_map
             .get_mut(&item_id)
             .unwrap_or_else(|| panic!("Missing listings for item id: {}", item_id))
             .sell(output_item_count.into())
@@ -278,7 +283,9 @@ pub fn calculate_crafting_profit(
             listing_profit += profit;
             total_crafting_cost += crafting_cost;
             crafting_count += output_item_count;
-            min_price = buy_price / output_item_count;
+
+            min_sell = min_buy;
+            breakeven = crafting_cost / output_item_count;
         } else {
             break;
         }
@@ -325,7 +332,9 @@ pub fn calculate_crafting_profit(
             crafting_steps: total_crafting_steps,
             profit: listing_profit,
             count: crafting_count,
-            min_price: api::trading_post_price_for_revenue(min_price),
+            max_sell: max_sell,
+            min_sell: min_sell,
+            breakeven: api::trading_post_price_for_revenue(breakeven),
         })
     } else {
         None
@@ -339,7 +348,9 @@ pub struct ProfitableItem {
     pub crafting_steps: Rational32,
     pub count: i32,
     pub profit: Rational32,
-    pub min_price: i32,
+    pub max_sell: i32,
+    pub min_sell: i32,
+    pub breakeven: i32,
 }
 
 impl ProfitableItem {
@@ -393,14 +404,16 @@ impl ItemListings {
         Some(cost)
     }
 
-    fn sell(&mut self, mut count: Rational32) -> Option<Rational32> {
+    fn sell(&mut self, mut count: Rational32) -> Option<(Rational32, i32)> {
         let mut revenue = Rational32::zero();
+        let mut min_buy = 0;
 
         while count.is_positive() {
             // buys are sorted in ascending price
             let remove = if let Some(listing) = self.buys.last_mut() {
                 listing.quantity -= Rational32::from(1);
                 count -= Rational32::from(1);
+                min_buy = listing.unit_price;
                 revenue += listing.unit_price_minus_fees();
                 listing.quantity.is_zero()
             } else {
@@ -412,7 +425,7 @@ impl ItemListings {
             }
         }
 
-        Some(revenue)
+        Some((revenue, min_buy))
     }
 
     fn lowest_sell_offer(&self, mut quantity: Rational32) -> Option<Rational32> {
