@@ -239,11 +239,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         println!("============");
         println!(
-            "Shopping list for {} x {} = {} profit ({} / step)",
+            "Shopping list for {} x {} = {} profit ({} / step, {}%)",
             profitable_item.count,
             &item,
             copper_to_string(profitable_item.profit.to_integer()),
-            profitable_item.profit_per_crafting_step().to_integer()
+            profitable_item.profit_per_crafting_step().to_integer(),
+            (profitable_item.profit_on_cost() * 100).round().to_integer(),
         );
         let price_msg = if profitable_item.max_sell == profitable_item.min_sell {
             format!("{}", copper_to_string(profitable_item.min_sell))
@@ -255,13 +256,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
         };
         println!(
-            "Sell at: {}, Breakeven price: {}",
+            "Sell at: {}, Crafting cost: {}, Breakeven price: {}",
             price_msg,
+            copper_to_string(profitable_item.crafting_cost.to_integer()),
             copper_to_string(profitable_item.breakeven),
         );
         println!("============");
-        for ((ingredient_id, ingredient_source), (ingredient_count_ratio, min_price, max_price)) in &purchased_ingredients {
-            let ingredient_count = ingredient_count_ratio.ceil().to_integer();
+        for ((ingredient_id, ingredient_source), ingredient) in &purchased_ingredients {
+            let ingredient_count = ingredient.count.ceil().to_integer();
             let ingredient_count_msg = if ingredient_count > ITEM_STACK_SIZE {
                 let stack_count = ingredient_count / ITEM_STACK_SIZE;
                 let remainder = ingredient_count % ITEM_STACK_SIZE;
@@ -278,20 +280,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ingredient_count.to_string()
             };
             let source_msg = match *ingredient_source {
-                crafting::Source::TradingPost => if *max_price == *min_price {
-                    format!(" (at {})", copper_to_string(*min_price))
+                crafting::Source::TradingPost => if ingredient.max_price == ingredient.min_price {
+                    format!(
+                        " (at {}) Subtotal: {}",
+                        copper_to_string(ingredient.min_price),
+                        copper_to_string(ingredient.total_cost.to_integer()),
+                    )
                 } else {
                     format!(
-                        " (at {} to {})",
-                        copper_to_string(*min_price),
-                        copper_to_string(*max_price),
+                        " (at {} to {}) Subtotal: {}",
+                        copper_to_string(ingredient.min_price),
+                        copper_to_string(ingredient.max_price),
+                        copper_to_string(ingredient.total_cost.to_integer()),
                     )
                 },
-                crafting::Source::Vendor => format!(
-                    " (vendor: {})", copper_to_string(items_map.get(ingredient_id).unwrap_or_else(|| {
+                crafting::Source::Vendor => {
+                    let cost = items_map.get(ingredient_id).unwrap_or_else(|| {
                         panic!("Missing item for ingredient {}", ingredient_id)
-                    }).vendor_cost().unwrap_or(0))
-                ),
+                    }).vendor_cost().unwrap_or(0);
+                    format!(
+                        " (vendor: {}) Subtotal: {}",
+                        copper_to_string(cost),
+                        copper_to_string(cost * ingredient_count),
+                    )
+                },
                 crafting::Source::Crafting => "".to_string(),
             };
             println!(

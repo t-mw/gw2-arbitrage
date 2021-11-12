@@ -215,7 +215,7 @@ pub fn calculate_crafting_profit(
     recipes_map: &HashMap<u32, Recipe>,
     items_map: &HashMap<u32, api::Item>,
     tp_listings_map: &HashMap<u32, api::ItemListings>,
-    mut purchased_ingredients: Option<&mut HashMap<(u32, Source), (Rational32, i32, i32)>>,
+    mut purchased_ingredients: Option<&mut HashMap<(u32, Source), PurchasedIngredient>>,
     opt: &CraftingOptions,
 ) -> Option<ProfitableItem> {
     let mut tp_listings_map: BTreeMap<u32, ItemListings> = tp_listings_map
@@ -291,7 +291,7 @@ pub fn calculate_crafting_profit(
         }
 
         for (purchase_id, count, purchase_source) in &context.purchases {
-            let (min_sell, max_sell) = if let Source::TradingPost = *purchase_source {
+            let (cost, min_sell, max_sell) = if let Source::TradingPost = *purchase_source {
                 let listing = tp_listings_map.get_mut(purchase_id).unwrap_or_else(|| {
                     panic!(
                         "Missing listings for ingredient {} of item id {}",
@@ -299,26 +299,32 @@ pub fn calculate_crafting_profit(
                     )
                 });
                 listing.pending_buy_quantity -= *count;
-                let (_, min_sell, max_sell) = listing.buy(*count).unwrap_or_else(|| {
+                let (cost, min_sell, max_sell) = listing.buy(*count).unwrap_or_else(|| {
                     panic!(
                         "Expected to be able to buy {} of ingredient {} for item id {}",
                         count, purchase_id, item_id
                     )
                 });
-                (min_sell, max_sell)
+                (cost, min_sell, max_sell)
             } else {
-                (0, 0)
+                (Rational32::zero(), 0, 0)
             };
 
             if let Some(purchased_ingredients) = &mut purchased_ingredients {
-                let (existing_count, min_price, max_price) = purchased_ingredients
+                let ingredient = purchased_ingredients
                     .entry((*purchase_id, *purchase_source))
-                    .or_insert_with(|| (Rational32::zero(), 0, 0));
-                *existing_count += count;
-                if min_price.is_zero() {
-                    *min_price = min_sell;
+                    .or_insert_with(|| PurchasedIngredient{
+                        count: Rational32::zero(),
+                        max_price: 0,
+                        min_price: 0,
+                        total_cost: Rational32::zero(),
+                    });
+                ingredient.count += count;
+                if ingredient.min_price.is_zero() {
+                    ingredient.min_price = min_sell;
                 }
-                *max_price = max_sell;
+                ingredient.max_price = max_sell;
+                ingredient.total_cost += cost;
             }
         }
         debug_assert!(tp_listings_map
@@ -342,6 +348,13 @@ pub fn calculate_crafting_profit(
     } else {
         None
     }
+}
+
+pub struct PurchasedIngredient {
+    pub count: Rational32,
+    pub max_price: i32,
+    pub min_price: i32,
+    pub total_cost: Rational32,
 }
 
 #[derive(Debug, Eq, PartialEq)]
