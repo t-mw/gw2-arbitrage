@@ -245,6 +245,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             copper_to_string(profitable_item.profit.to_integer()),
             profitable_item.profit_per_crafting_step().to_integer()
         );
+        if profitable_item.max_sell != profitable_item.min_sell {
+            println!(
+                "Sell at: {} to {}, Breakeven price: {}",
+                copper_to_string(profitable_item.max_sell),
+                copper_to_string(profitable_item.min_sell),
+                copper_to_string(profitable_item.breakeven),
+            );
+        } else {
+            println!(
+                "Sell at: {}, Breakeven price: {}",
+                copper_to_string(profitable_item.min_sell),
+                copper_to_string(profitable_item.breakeven),
+            );
+        }
         println!("============");
         for ((ingredient_id, ingredient_source), ingredient_count_ratio) in &purchased_ingredients {
             let ingredient_count = ingredient_count_ratio.ceil().to_integer();
