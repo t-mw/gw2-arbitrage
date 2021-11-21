@@ -164,5 +164,10 @@ where
 pub async fn fetch_account_recipes(key: &str) -> Result<HashSet<u32>, Box<dyn std::error::Error>> {
     let url = format!("https://api.guildwars2.com/v2/account/recipes?access_token={}", key);
     println!("Fetching {}", url);
-    Ok(reqwest::get(url).await?.json().await?)
+    let result = reqwest::get(url).await?;
+    if result.status() != 200 {
+        let err: serde_json::value::Value = result.json().await?;
+        panic!("API error fetching recipe unlocks: {}", err["text"]);
+    }
+    Ok(result.json().await?)
 }
