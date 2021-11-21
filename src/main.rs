@@ -330,7 +330,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }).collect();
         if unknown_recipes.len() > 0 {
             println!(
-                "You don't know how to craft this yet. Missing recipe{}: {}",
+                "You can not craft this yet. Missing recipe id{}: {}",
                 if unknown_recipes.len() > 1 { "s" } else { "" },
                 unknown_recipes.iter()
                     .map(|x| x.to_string())
