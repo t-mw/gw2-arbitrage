@@ -321,9 +321,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             profitable_item.count, item_id
         );
 
-        let unknown_recipes: Vec<u32> = profitable_item.used_recipes.iter().filter_map(|(k, v)| {
-            if !*v {
-                Some(*k)
+        let unknown_recipes: Vec<u32> = profitable_item.used_recipes.iter().filter_map(|(id, known)| {
+            if !*known {
+                Some(*id)
             } else {
                 None
             }
@@ -333,7 +333,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "You can not craft this yet. Missing recipe id{}: {}",
                 if unknown_recipes.len() > 1 { "s" } else { "" },
                 unknown_recipes.iter()
-                    .map(|x| x.to_string())
+                    .map(|id| id.to_string())
                     .collect::<Vec<String>>()
                     .join(", ")
             );
@@ -506,9 +506,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect::<Vec<_>>()
                 .join("/"),
             item_id,
-            unknown_recipes: profitable_item.used_recipes.iter().filter_map(|(k, v)| {
-                if !*v {
-                    Some(*k)
+            unknown_recipes: profitable_item.used_recipes.iter().filter_map(|(id, known)| {
+                if !*known {
+                    Some(*id)
                 } else {
                     None
                 }
@@ -530,10 +530,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             output_row.name,
             output_row.disciplines,
             format!("{}", output_row.item_id),
-            format!("{}", output_row.unknown_recipes.iter()
-                .map(|x| x.to_string())
-                .collect::<Vec<String>>()
-                .join(",")
+            format!(
+                "{}",
+                output_row
+                    .unknown_recipes.iter()
+                    .map(|id| id.to_string())
+                    .collect::<Vec<String>>()
+                    .join(",")
             ),
             copper_to_string(output_row.total_profit),
             format!(
