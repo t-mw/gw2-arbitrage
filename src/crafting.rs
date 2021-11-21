@@ -259,6 +259,7 @@ pub fn calculate_crafting_profit(
                         if let Some(known_recipes) = known_recipes {
                             used_recipes.insert(id, known_recipes.contains(&id));
                         } else {
+                            // If we have no known recipes, assume we know none
                             used_recipes.insert(id, false);
                         }
                     }
@@ -578,8 +579,10 @@ impl TryFrom<gw2efficiency::Recipe> for Recipe {
             ));
         };
         // Any disciplines _except_ Achievement can be counted as known
-        // There are a few for regular disciplines, but they are mostly account bound for leg weapons
-        // Some Scribe WvW BPs which are useful too
+        // While some regular discipline precursor recipes must be learned, the
+        // outputs appear to be account bound anyway, so won't be on TP.
+        // There are some useful Scribe WvW BPs in the data, so ignoring all
+        // normal discipline recipes would catch those too.
         let source = if recipe.disciplines.contains(&"Achievement".to_string()) {
             RecipeSource::Achievement
         } else {
