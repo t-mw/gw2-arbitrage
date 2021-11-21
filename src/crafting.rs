@@ -258,6 +258,8 @@ pub fn calculate_crafting_profit(
                     _ => {
                         if let Some(known_recipes) = known_recipes {
                             used_recipes.insert(id, known_recipes.contains(&id));
+                        } else {
+                            used_recipes.insert(id, false);
                         }
                     }
                 }
