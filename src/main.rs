@@ -71,6 +71,9 @@ struct Opt {
 
     #[structopt(long, parse(from_os_str), help = &CACHE_DIR_HELP)]
     cache_dir: Option<PathBuf>,
+
+    #[structopt(long, parse(from_os_str), help = &CONFIG_FILE_HELP)]
+    config_file: Option<PathBuf>,
 }
 
 static CACHE_DIR_HELP: Lazy<String> = Lazy::new(|| {
@@ -79,6 +82,17 @@ static CACHE_DIR_HELP: Lazy<String> = Lazy::new(|| {
 
 If provided, the parent directory of the cache directory must already exist. Defaults to '{}'."#,
         cache_dir().unwrap().display()
+    )
+});
+
+static CONFIG_FILE_HELP: Lazy<String> = Lazy::new(|| {
+    format!(
+        r#"Read config options from this file. Supported options:
+
+    api_key = "<key-with-unlocks-scope>"
+
+The default file location is '{}'."#,
+        config_file().unwrap().display()
     )
 });
 
@@ -125,7 +139,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opt = Opt::from_args();
 
     // API key requires scope unlocks
-    let conf: Config = if let Ok(mut file) = File::open(config_file()?) {
+    let config_file = if let Some(file) = &opt.config_file {
+        file.clone()
+    } else {
+        config_file()?
+    };
+    let conf: Config = if let Ok(mut file) = File::open(config_file) {
         let mut s = String::new();
         file.read_to_string(&mut s)?;
         toml::from_str(&s)?
