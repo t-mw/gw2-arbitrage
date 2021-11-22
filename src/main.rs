@@ -478,11 +478,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .cycle();
 
     let header = format!(
-        "{:<50} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15} {:>15} {:>15}",
+        "{:<50} {:<15} {:<15} {:<20} {:>15} {:>15} {:>15} {:>15} {:>15} {:>15}",
         "Name",
         "Disciplines",
         "Item id",
-        "Unk Recipe id",
+        "Req. Recipe Ids",
         "Total profit",
         "No. required",
         "Profit / item",
@@ -541,7 +541,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let line = format!(
-            "{:<50} {:<15} {:<15} {:<15} {:>15} {:>15} {:>15} {:>15} {:>15} {:>15}",
+            "{:<50} {:<15} {:<15} {:<20} {:>15} {:>15} {:>15} {:>15} {:>15} {:>15}",
             output_row.name,
             output_row.disciplines,
             format!("{}", output_row.item_id),
