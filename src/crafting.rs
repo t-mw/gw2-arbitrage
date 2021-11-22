@@ -108,7 +108,7 @@ fn calculate_precise_min_crafting_cost(
     item_count: Rational32,
     recipes_map: &HashMap<u32, Recipe>,
     items_map: &HashMap<u32, api::Item>,
-    used_recipe: &mut dyn FnMut(&Recipe) -> (),
+    add_recipe: &mut dyn FnMut(&Recipe) -> (),
     tp_listings_map: &mut BTreeMap<u32, ItemListings>,
     context: &mut PreciseCraftingCostContext,
     opt: &CraftingOptions,
@@ -135,7 +135,7 @@ fn calculate_precise_min_crafting_cost(
                     ingredient_count,
                     recipes_map,
                     items_map,
-                    used_recipe,
+                    add_recipe,
                     tp_listings_map,
                     context,
                     opt,
@@ -150,8 +150,6 @@ fn calculate_precise_min_crafting_cost(
                     return None;
                 }
             }
-
-            used_recipe(&recipe);
 
             Some(cost)
         }
@@ -181,6 +179,7 @@ fn calculate_precise_min_crafting_cost(
 
     if source == Source::Crafting {
         context.crafting_steps += item_count / output_item_count;
+        add_recipe(recipe.unwrap());
     } else {
         for (purchase_id, purchase_quantity, purchase_source) in
             context.purchases.drain(purchases_ptr..)
@@ -237,7 +236,7 @@ pub fn calculate_crafting_profit(
     let mut total_crafting_cost = Rational32::zero();
     let mut crafting_count = 0;
     let mut total_crafting_steps = Rational32::zero();
-    let mut used_recipes = HashMap::new();
+    let mut unknown_recipes = HashSet::new();
 
     let mut min_sell = 0;
     let max_sell = tp_listings_map.get(&item_id)
@@ -246,23 +245,24 @@ pub fn calculate_crafting_profit(
     let mut breakeven = Rational32::zero();
 
     // Check if we can craft this
-    let mut used_recipe = |recipe: &Recipe| {
-        if let Some(id) = recipe.id {
-            if !&used_recipes.contains_key(&id) {
-                match recipe.source {
-                    // Not included in the API
-                    RecipeSource::Automatic | RecipeSource::Discovered => {
-                        // TODO: check if account has a char with the required crafting level
-                        used_recipes.insert(id, true);
-                    }
-                    _ => {
-                        if let Some(known_recipes) = known_recipes {
-                            used_recipes.insert(id, known_recipes.contains(&id));
-                        } else {
-                            // If we have no known recipes, assume we know none
-                            used_recipes.insert(id, false);
+    let mut add_recipe = |recipe: &Recipe| {
+        if let Some(id) = recipe.id.filter(|id| !unknown_recipes.contains(id)) {
+            match recipe.source {
+                RecipeSource::Purchasable | RecipeSource::Achievement => {
+                    if let Some(known_recipes) = known_recipes {
+                        if !known_recipes.contains(&id) {
+                            unknown_recipes.insert(id);
                         }
+                    } else {
+                        // If we have no known recipes, assume we know none
+                        unknown_recipes.insert(id);
                     }
+                }
+                // These aren't included in the API; assume you know them
+                RecipeSource::Automatic | RecipeSource::Discoverable => {
+                    // TODO: instead, check if account has a char with the required crafting level
+                    // Would require a key with the characters scope. Still wouldn't detect
+                    // discoverable recipes, but would detect access to them
                 }
             }
         }
@@ -289,7 +289,7 @@ pub fn calculate_crafting_profit(
             output_item_count.into(),
             recipes_map,
             items_map,
-            &mut used_recipe,
+            &mut add_recipe,
             &mut tp_listings_map,
             &mut context,
             opt,
@@ -363,7 +363,7 @@ pub fn calculate_crafting_profit(
             crafting_steps: total_crafting_steps,
             profit: listing_profit,
             count: crafting_count,
-            used_recipes,
+            unknown_recipes,
             max_sell: max_sell,
             min_sell: min_sell,
             breakeven: api::add_trading_post_sales_commission(breakeven),
@@ -380,7 +380,7 @@ pub struct ProfitableItem {
     pub crafting_steps: Rational32,
     pub count: i32,
     pub profit: Rational32,
-    pub used_recipes: HashMap<u32, bool>, // id -> known/unknown
+    pub unknown_recipes: HashSet<u32>, // id
     pub max_sell: i32,
     pub min_sell: i32,
     pub breakeven: i32,
@@ -531,8 +531,8 @@ impl Listing {
 #[derive(Debug, Serialize, Deserialize)]
 enum RecipeSource {
     Automatic,
-    Discovered,
-    Purchase,
+    Discoverable,
+    Purchasable,
     Achievement,
 }
 
@@ -549,11 +549,11 @@ pub struct Recipe {
 impl From<api::Recipe> for Recipe {
     fn from(recipe: api::Recipe) -> Self {
         let source = if recipe.is_purchased() {
-            RecipeSource::Purchase
+            RecipeSource::Purchasable
         } else if recipe.is_automatic() {
             RecipeSource::Automatic
         } else {
-            RecipeSource::Discovered
+            RecipeSource::Discoverable
         };
         Recipe {
             id: Some(recipe.id),

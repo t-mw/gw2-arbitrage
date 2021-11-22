@@ -154,7 +154,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     let known_recipes = if let Some(key) = conf.api_key {
-        Some(request::fetch_account_recipes(&key).await?)
+        Some(
+            request::fetch_account_recipes(&key)
+            .await
+            .map_err(|e| format!("API error fetching recipe unlocks: {}", e))?
+        )
     } else {
         None
     };
@@ -340,16 +344,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             profitable_item.count, item_id
         );
 
-        let unknown_recipes: Vec<u32> = profitable_item.used_recipes.iter().filter_map(|(id, known)| {
-            if !*known {
-                Some(*id)
-            } else {
-                None
-            }
-        }).collect();
+        let unknown_recipes: Vec<u32> = profitable_item.unknown_recipes.iter().map(|&id| id).collect();
         if unknown_recipes.len() > 0 {
             println!(
-                "You {} craft this yet. Missing recipe id{}: {}",
+                "You {} craft this yet. Required recipe id{}: {}",
                 match known_recipes {
                     Some(_) => "can not",
                     None => "may not be able to",
@@ -529,13 +527,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect::<Vec<_>>()
                 .join("/"),
             item_id,
-            unknown_recipes: profitable_item.used_recipes.iter().filter_map(|(id, known)| {
-                if !*known {
-                    Some(*id)
-                } else {
-                    None
-                }
-            }).collect(),
+            unknown_recipes: profitable_item.unknown_recipes.iter().map(|&id| id).collect(),
             total_profit: profitable_item.profit.to_integer(),
             number_required: profitable_item.count,
             profit_per_item: profitable_item.profit_per_item().to_integer(),
