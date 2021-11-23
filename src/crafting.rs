@@ -220,7 +220,7 @@ pub fn calculate_crafting_profit(
     known_recipes: &Option<HashSet<u32>>,
     items_map: &HashMap<u32, api::Item>,
     tp_listings_map: &HashMap<u32, api::ItemListings>,
-    mut purchased_ingredients: Option<&mut HashMap<(u32, Source), Rational32>>,
+    mut purchased_ingredients: Option<&mut HashMap<(u32, Source), PurchasedIngredient>>,
     opt: &CraftingOptions,
 ) -> Option<ProfitableItem> {
     let mut tp_listings_map: BTreeMap<u32, ItemListings> = tp_listings_map
@@ -322,36 +322,45 @@ pub fn calculate_crafting_profit(
         }
 
         for (purchase_id, count, purchase_source) in &context.purchases {
-            if *purchase_source != Source::TradingPost {
-                continue;
-            }
+            let (cost, min_sell, max_sell) = if let Source::TradingPost = *purchase_source {
+                let listing = tp_listings_map.get_mut(purchase_id).unwrap_or_else(|| {
+                    panic!(
+                        "Missing listings for ingredient {} of item id {}",
+                        purchase_id, item_id
+                    )
+                });
+                listing.pending_buy_quantity -= *count;
+                let (cost, min_sell, max_sell) = listing.buy(*count).unwrap_or_else(|| {
+                    panic!(
+                        "Expected to be able to buy {} of ingredient {} for item id {}",
+                        count, purchase_id, item_id
+                    )
+                });
+                (cost, min_sell, max_sell)
+            } else {
+                (Rational32::zero(), 0, 0)
+            };
 
-            let listing = tp_listings_map.get_mut(purchase_id).unwrap_or_else(|| {
-                panic!(
-                    "Missing listings for ingredient {} of item id {}",
-                    purchase_id, item_id
-                )
-            });
-            listing.pending_buy_quantity -= *count;
-            listing.buy(*count).unwrap_or_else(|| {
-                panic!(
-                    "Expected to be able to buy {} of ingredient {} for item id {}",
-                    count, purchase_id, item_id
-                )
-            });
+            if let Some(purchased_ingredients) = &mut purchased_ingredients {
+                let ingredient = purchased_ingredients
+                    .entry((*purchase_id, *purchase_source))
+                    .or_insert_with(|| PurchasedIngredient{
+                        count: Rational32::zero(),
+                        max_price: 0,
+                        min_price: 0,
+                        total_cost: Rational32::zero(),
+                    });
+                ingredient.count += count;
+                if ingredient.min_price.is_zero() {
+                    ingredient.min_price = min_sell;
+                }
+                ingredient.max_price = max_sell;
+                ingredient.total_cost += cost;
+            }
         }
         debug_assert!(tp_listings_map
             .iter()
             .all(|(_, listing)| listing.pending_buy_quantity.is_zero()));
-
-        if let Some(purchased_ingredients) = &mut purchased_ingredients {
-            for (purchase_id, count, purchase_source) in &context.purchases {
-                let existing_count = purchased_ingredients
-                    .entry((*purchase_id, *purchase_source))
-                    .or_insert_with(Rational32::zero);
-                *existing_count += count;
-            }
-        }
 
         total_crafting_steps += context.crafting_steps;
     }
@@ -371,6 +380,13 @@ pub fn calculate_crafting_profit(
     } else {
         None
     }
+}
+
+pub struct PurchasedIngredient {
+    pub count: Rational32,
+    pub max_price: i32,
+    pub min_price: i32,
+    pub total_cost: Rational32,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -415,14 +431,20 @@ pub struct Listing {
 }
 
 impl ItemListings {
-    fn buy(&mut self, mut count: Rational32) -> Option<Rational32> {
+    fn buy(&mut self, mut count: Rational32) -> Option<(Rational32, i32, i32)> {
         let mut cost = Rational32::zero();
+        let mut min_sell = 0;
+        let mut max_sell = 0;
 
         while count.is_positive() {
             // sells are sorted in descending price
             let remove = if let Some(listing) = self.sells.last_mut() {
                 listing.quantity -= Rational32::from(1);
                 count -= Rational32::from(1);
+                if min_sell == 0 {
+                    min_sell = listing.unit_price;
+                }
+                max_sell = listing.unit_price;
                 cost += listing.unit_price;
                 listing.quantity.is_zero()
             } else {
@@ -434,7 +456,7 @@ impl ItemListings {
             }
         }
 
-        Some(cost)
+        Some((cost, min_sell, max_sell))
     }
 
     fn sell(&mut self, mut count: Rational32) -> Option<(Rational32, i32)> {

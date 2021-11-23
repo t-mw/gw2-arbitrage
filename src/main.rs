@@ -287,29 +287,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         println!("============");
         println!(
-            "Shopping list for {} x {} = {} profit ({} / step)",
+            "Shopping list for {} x {} = {} profit ({} / step, {}%)",
             profitable_item.count,
             &item,
             copper_to_string(profitable_item.profit.to_integer()),
-            profitable_item.profit_per_crafting_step().to_integer()
+            profitable_item.profit_per_crafting_step().to_integer(),
+            (profitable_item.profit_on_cost() * 100).round().to_integer(),
         );
-        if profitable_item.max_sell != profitable_item.min_sell {
-            println!(
-                "Sell at: {} to {}, Breakeven price: {}",
+        let price_msg = if profitable_item.max_sell == profitable_item.min_sell {
+            format!("{}", copper_to_string(profitable_item.min_sell))
+        } else {
+            format!(
+                "{} to {}",
                 copper_to_string(profitable_item.max_sell),
                 copper_to_string(profitable_item.min_sell),
-                copper_to_string(profitable_item.breakeven),
-            );
-        } else {
-            println!(
-                "Sell at: {}, Breakeven price: {}",
-                copper_to_string(profitable_item.min_sell),
-                copper_to_string(profitable_item.breakeven),
-            );
-        }
+            )
+        };
+        println!(
+            "Sell at: {}, Crafting cost: {}, Breakeven price: {}",
+            price_msg,
+            copper_to_string(profitable_item.crafting_cost.to_integer()),
+            copper_to_string(profitable_item.breakeven),
+        );
         println!("============");
-        for ((ingredient_id, ingredient_source), ingredient_count_ratio) in &purchased_ingredients {
-            let ingredient_count = ingredient_count_ratio.ceil().to_integer();
+        for ((ingredient_id, ingredient_source), ingredient) in &purchased_ingredients {
+            let ingredient_count = ingredient.count.ceil().to_integer();
             let ingredient_count_msg = if ingredient_count > ITEM_STACK_SIZE {
                 let stack_count = ingredient_count / ITEM_STACK_SIZE;
                 let remainder = ingredient_count % ITEM_STACK_SIZE;
@@ -325,17 +327,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 ingredient_count.to_string()
             };
+            let source_msg = match *ingredient_source {
+                crafting::Source::TradingPost => if ingredient.max_price == ingredient.min_price {
+                    format!(
+                        " (at {}) Subtotal: {}",
+                        copper_to_string(ingredient.min_price),
+                        copper_to_string(ingredient.total_cost.to_integer()),
+                    )
+                } else {
+                    format!(
+                        " (at {} to {}) Subtotal: {}",
+                        copper_to_string(ingredient.min_price),
+                        copper_to_string(ingredient.max_price),
+                        copper_to_string(ingredient.total_cost.to_integer()),
+                    )
+                },
+                crafting::Source::Vendor => {
+                    let vendor_cost = items_map.get(ingredient_id).unwrap_or_else(|| {
+                        panic!("Missing item for ingredient {}", ingredient_id)
+                    }).vendor_cost();
+                    if let Some(cost) = vendor_cost {
+                        format!(
+                            " (vendor: {}) Subtotal: {}",
+                            copper_to_string(cost),
+                            copper_to_string(cost * ingredient_count),
+                        )
+                    } else {
+                        "".to_string()
+                    }
+                },
+                crafting::Source::Crafting => "".to_string(),
+            };
             println!(
                 "{} {}{}",
                 ingredient_count_msg,
                 items_map
                     .get(ingredient_id)
                     .map_or_else(|| "???".to_string(), |item| item.to_string()),
-                if *ingredient_source == crafting::Source::Vendor {
-                    " (vendor)"
-                } else {
-                    ""
-                }
+                source_msg,
             );
         }
         println!("============");
