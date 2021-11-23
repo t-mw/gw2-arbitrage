@@ -9,6 +9,7 @@ use toml;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::cmp::Ordering;
@@ -62,10 +63,13 @@ struct Opt {
 
     /// Download recipes and items from the GW2 API, replacing any previously cached recipes and items
     #[structopt(long)]
-    reset_cache: bool,
+    reset_data: bool,
 
     #[structopt(long, parse(from_os_str), help = &CACHE_DIR_HELP)]
     cache_dir: Option<PathBuf>,
+
+    #[structopt(long, parse(from_os_str), help = &DATA_DIR_HELP)]
+    data_dir: Option<PathBuf>,
 
     #[structopt(long, parse(from_os_str), help = &CONFIG_FILE_HELP)]
     config_file: Option<PathBuf>,
@@ -73,10 +77,19 @@ struct Opt {
 
 static CACHE_DIR_HELP: Lazy<String> = Lazy::new(|| {
     format!(
+        r#"Save cached API calls to this directory
+
+If provided, the parent directory of the cache directory must already exist. Defaults to '{}'."#,
+        cache_dir(&None).unwrap().display()
+    )
+});
+
+static DATA_DIR_HELP: Lazy<String> = Lazy::new(|| {
+    format!(
         r#"Save cached recipes and items to this directory
 
 If provided, the parent directory of the cache directory must already exist. Defaults to '{}'."#,
-        cache_dir().unwrap().display()
+        data_dir(&None).unwrap().display()
     )
 });
 
@@ -87,7 +100,7 @@ static CONFIG_FILE_HELP: Lazy<String> = Lazy::new(|| {
     api_key = "<key-with-unlocks-scope>"
 
 The default file location is '{}'."#,
-        config_file().unwrap().display()
+        config_file(&None).unwrap().display()
     )
 });
 
@@ -114,16 +127,6 @@ where
     serializer.serialize_f64((PRECISION * value.to_f64().unwrap_or(0.0)).round() / PRECISION)
 }
 
-fn remove_cache_file(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>>
-{
-    if file.exists() {
-        println!("Removing existing cache file at '{}'", file.display());
-        std::fs::remove_file(&file)
-            .map_err(|e| format!("Failed to remove '{}' ({})", file.display(), e))?;
-    }
-    Ok(())
-}
-
 #[derive(Debug, Deserialize)]
 struct Config {
     api_key: Option<String>,
@@ -133,13 +136,11 @@ struct Config {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opt = Opt::from_args();
 
+    let cache_dir = ensure_dir(cache_dir(&opt.cache_dir)?)?;
+    flush_cache(&cache_dir)?;
+
     // API key requires scope unlocks
-    let config_file = if let Some(file) = &opt.config_file {
-        file.clone()
-    } else {
-        config_file()?
-    };
-    let conf: Config = if let Ok(mut file) = File::open(config_file) {
+    let conf: Config = if let Ok(mut file) = File::open(config_file(&opt.config_file)?) {
         let mut s = String::new();
         file.read_to_string(&mut s)?;
         toml::from_str(&s)?
@@ -150,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let known_recipes = if let Some(key) = conf.api_key {
         Some(
-            request::fetch_account_recipes(&key)
+            request::fetch_account_recipes(&key, &cache_dir)
             .await
             .map_err(|e| format!("API error fetching recipe unlocks: {}", e))?
         )
@@ -172,18 +173,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let cache_dir = create_cache_dir(&opt)?;
-    let mut api_recipes_path = cache_dir.clone();
+    let data_dir = ensure_dir(data_dir(&opt.data_dir)?)?;
+    let mut api_recipes_path = data_dir.clone();
     api_recipes_path.push("recipes.bin");
-    let mut items_path = cache_dir.clone();
+    let mut items_path = data_dir.clone();
     items_path.push("items.bin");
-    let mut custom_recipes_path = cache_dir.clone();
+    let mut custom_recipes_path = data_dir.clone();
     custom_recipes_path.push("custom.bin");
 
-    if opt.reset_cache {
-        remove_cache_file(&api_recipes_path)?;
-        remove_cache_file(&items_path)?;
-        remove_cache_file(&custom_recipes_path)?;
+    if opt.reset_data {
+        remove_data_file(&api_recipes_path)?;
+        remove_data_file(&items_path)?;
+        remove_data_file(&custom_recipes_path)?;
     }
 
     println!("Loading recipes");
@@ -253,7 +254,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         request_listing_item_ids.sort_unstable();
         request_listing_item_ids.dedup();
 
-        let tp_listings = request::fetch_item_listings(&request_listing_item_ids).await?;
+        let tp_listings = request::fetch_item_listings(&request_listing_item_ids, Some(&cache_dir)).await?;
         let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
 
         let mut purchased_ingredients = Default::default();
@@ -471,7 +472,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     request_listing_item_ids.extend(ingredient_ids);
     request_listing_item_ids.sort_unstable();
     request_listing_item_ids.dedup();
-    let tp_listings = request::fetch_item_listings(&request_listing_item_ids).await?;
+    // Caching these is pointless, as the vector changes on each run, leading to new URLs
+    let tp_listings = request::fetch_item_listings(&request_listing_item_ids, None).await?;
     println!(
         "Loaded {} detailed trading post listings",
         tp_listings.len()
@@ -634,12 +636,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn create_cache_dir(opt: &Opt) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let dir = if let Some(dir) = &opt.cache_dir {
-        dir.clone()
-    } else {
-        cache_dir()?
-    };
+fn ensure_dir(dir: PathBuf) -> Result<PathBuf, Box<dyn std::error::Error>> {
     if !dir.exists() {
         std::fs::create_dir(&dir)
             .map_err(|e| format!("Failed to create '{}' ({})", dir.display(), e).into())
@@ -649,7 +646,10 @@ fn create_cache_dir(opt: &Opt) -> Result<PathBuf, Box<dyn std::error::Error>> {
     }
 }
 
-fn cache_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn cache_dir(dir: &Option<PathBuf>) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if let Some(dir) = dir {
+        return Ok(dir.clone());
+    }
     dirs::cache_dir()
         .filter(|d| d.exists())
         .map(|mut cache_dir| {
@@ -660,7 +660,58 @@ fn cache_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
         .ok_or_else(|| "Failed to access current working directory".into())
 }
 
-fn config_file() -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn flush_cache(cache_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    // flush any cache files older than 5 mins - which is how long the API caches url results.
+    // Assume our request triggered the cache
+    // Prefix w/"cache_"; on Windows the user cache and user local data folders are the same
+    let expired = SystemTime::now() - Duration::new(300, 0);
+    for file in fs::read_dir(&cache_dir)? {
+        let file = file?;
+        let filename = file.file_name().into_string();
+        if let Ok(name) = filename {
+            if !name.starts_with("cache_") {
+                continue;
+            }
+        }
+        let metadata = file.metadata()?;
+        if !metadata.is_file() {
+            continue;
+        }
+        if metadata.created()? <= expired {
+            fs::remove_file(file.path())?;
+        }
+    }
+    Ok(())
+}
+
+fn data_dir(dir: &Option<PathBuf>) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if let Some(dir) = dir {
+        return Ok(dir.clone());
+    }
+    dirs::data_dir()
+        .filter(|d| d.exists())
+        .map(|mut data_dir| {
+            data_dir.push("gw2-arbitrage");
+            data_dir
+        })
+        .or_else(|| std::env::current_dir().ok())
+        .ok_or_else(|| "Failed to access current working directory".into())
+}
+
+fn remove_data_file(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>>
+{
+    if file.exists() {
+        println!("Removing existing data file at '{}'", file.display());
+        std::fs::remove_file(&file)
+            .map_err(|e| format!("Failed to remove '{}' ({})", file.display(), e))?;
+    }
+    Ok(())
+}
+
+fn config_file(file: &Option<PathBuf>) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if let Some(file) = file {
+        return Ok(file.clone());
+    }
     dirs::config_dir()
         .filter(|d| d.exists())
         .map(|mut config_dir| {

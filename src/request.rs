@@ -1,5 +1,6 @@
 use crate::api::ItemListings;
 
+use bincode;
 use bincode::{deserialize_from, serialize_into};
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
@@ -9,7 +10,10 @@ use serde_json;
 
 use std::fs::File;
 use std::path::Path;
+use std::path::PathBuf;
 use std::collections::HashSet;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 const PARALLEL_REQUESTS: usize = 10;
 const MAX_PAGE_SIZE: i32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
@@ -17,9 +21,10 @@ const MAX_ITEM_ID_LENGTH: i32 = 200; // error returned for greater than this amo
 
 pub async fn fetch_item_listings(
     item_ids: &[u32],
+    cache_dir: Option<&PathBuf>,
 ) -> Result<Vec<ItemListings>, Box<dyn std::error::Error>> {
     let mut tp_listings: Vec<ItemListings> =
-        request_item_ids("commerce/listings", item_ids).await?;
+        request_item_ids("commerce/listings", item_ids, cache_dir).await?;
 
     for listings in &mut tp_listings {
         // by default sells are listed in ascending and buys in descending price.
@@ -134,6 +139,7 @@ where
 async fn request_item_ids<T>(
     url_path: &str,
     item_ids: &[u32],
+    cache_dir: Option<&PathBuf>,
 ) -> Result<Vec<T>, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
@@ -149,31 +155,86 @@ where
             url_path,
             item_ids_str.join(",")
         );
-
-        println!("Fetching {}", url);
-        let response = reqwest::get(&url).await?;
-        let bytes = response.bytes().await?;
-        let de = &mut serde_json::Deserializer::from_slice(&bytes);
-        let v: Vec<T> = serde_path_to_error::deserialize(de)?;
-        result.extend(v.into_iter());
+        if let Some(cache_dir) = cache_dir {
+            result.extend(cache_get::<Vec<T>>(&url, cache_dir, None).await?.into_iter());
+        } else {
+            result.extend(fetch::<Vec<T>>(&url, None).await?.into_iter());
+        }
     }
 
     Ok(result)
 }
 
-pub async fn fetch_account_recipes(key: &str) -> Result<HashSet<u32>, Box<dyn std::error::Error>> {
+pub async fn fetch_account_recipes(key: &str, cache_dir: &PathBuf) -> Result<HashSet<u32>, Box<dyn std::error::Error>> {
     let base = "https://api.guildwars2.com/v2/account/recipes?access_token=";
     let url = format!("{}{}", base, key);
-    println!("Fetching {}{}", base, "<api-key>");
-    let result = reqwest::get(url).await?;
-    let status = result.status();
-    if status != 200 {
-        let err: serde_json::value::Value = result.json().await?;
+    let display = format!("{}{}", base, "<api-key>");
+    Ok(cache_get(&url, cache_dir, Some(&display)).await?)
+}
+
+async fn cache_get<T>(
+    url: &str,
+    cache_dir: &PathBuf,
+    display: Option<&str>,
+) -> Result<T, Box<dyn std::error::Error>>
+where
+    T: serde::Serialize,
+    T: serde::de::DeserializeOwned,
+{
+    // Hash URL, check if cached, deserialize if so
+    // We're hashing on url since the API does as well
+    let mut hash = DefaultHasher::new();
+    url.hash(&mut hash);
+    let hash = hash.finish();
+
+    let mut cache_file = cache_dir.clone();
+    cache_file.push(format!("cache_{}", hash));
+
+    if let Ok(file) = File::open(&cache_file) {
+        let stream = DeflateDecoder::new(file);
+        let v = deserialize_from(stream)?;
+
+        return Ok(v)
+    }
+
+    let v = fetch(&url, display).await?;
+
+    // save cache file
+    let file = File::create(cache_file)?;
+    let stream = DeflateEncoder::new(file, Compression::default());
+    serialize_into(stream, &v)?;
+
+    Ok(v)
+}
+
+async fn fetch<T>(
+    url: &str,
+    display: Option<&str>,
+) -> Result<T, Box<dyn std::error::Error>>
+where
+    T: serde::Serialize,
+    T: serde::de::DeserializeOwned,
+{
+    if let Some(url) = display {
+        println!("Fetching {}", url);
+    } else {
+        println!("Fetching {}", url);
+    }
+
+    let response = reqwest::get(url).await?;
+    let status = response.status();
+    if !status.is_success() {
+        let err: serde_json::value::Value = response.json().await?;
         let text = err
             .get("text")
             .and_then(|text| text.as_str())
             .unwrap_or_else(|| status.as_str());
         return Err(text.into());
     }
-    Ok(result.json().await?)
+
+    let bytes = response.bytes().await?;
+    let de = &mut serde_json::Deserializer::from_slice(&bytes);
+    let v: T = serde_path_to_error::deserialize(de)?;
+
+    Ok(v)
 }
