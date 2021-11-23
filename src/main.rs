@@ -295,14 +295,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     )
                 },
                 crafting::Source::Vendor => {
-                    let cost = items_map.get(ingredient_id).unwrap_or_else(|| {
+                    let vendor_cost = items_map.get(ingredient_id).unwrap_or_else(|| {
                         panic!("Missing item for ingredient {}", ingredient_id)
-                    }).vendor_cost().unwrap_or(0);
-                    format!(
-                        " (vendor: {}) Subtotal: {}",
-                        copper_to_string(cost),
-                        copper_to_string(cost * ingredient_count),
-                    )
+                    }).vendor_cost();
+                    if let Some(cost) = vendor_cost {
+                        format!(
+                            " (vendor: {}) Subtotal: {}",
+                            copper_to_string(cost),
+                            copper_to_string(cost * ingredient_count),
+                        )
+                    } else {
+                        "".to_string()
+                    }
                 },
                 crafting::Source::Crafting => "".to_string(),
             };
