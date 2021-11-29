@@ -38,8 +38,6 @@ pub struct PriceInfo {
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Recipe {
     pub id: u32,
-    #[serde(rename = "type")]
-    type_name: String,
     pub output_item_id: u32,
     pub output_item_count: i32,
     time_to_craft_ms: i32,
@@ -47,7 +45,6 @@ pub struct Recipe {
     min_rating: i32,
     flags: Vec<String>,
     pub ingredients: Vec<RecipeIngredient>,
-    chat_link: String,
 }
 
 impl Recipe {
@@ -66,20 +63,66 @@ pub struct RecipeIngredient {
 }
 
 // types for /items
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Item {
     pub id: u32,
-    chat_link: String,
     pub name: String,
     #[serde(rename = "type")]
-    type_name: String,
-    rarity: String,
+    item_type: ItemType,
+    rarity: ItemRarity,
     level: i32,
     vendor_value: i32,
     flags: Vec<String>,
     restrictions: Vec<String>,
     upgrades_into: Option<Vec<ItemUpgrade>>,
     upgrades_from: Option<Vec<ItemUpgrade>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ItemType {
+    Armor,
+    Back,
+    Bag,
+    Consumable,
+    Container,
+    CraftingMaterial,
+    Gathering,
+    Gizmo,
+    Key,
+    MiniPet,
+    Tool,
+    Trait,
+    Trinket,
+    Trophy,
+    UpgradeComponent,
+    Weapon,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ItemRarity {
+    Junk,
+    Basic,
+    Fine,
+    Masterwork,
+    Rare,
+    Exotic,
+    Ascended,
+    Legendary,
+}
+// TODO: Localize
+impl fmt::Display for ItemRarity {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match &self {
+            ItemRarity::Junk => "Junk",
+            ItemRarity::Basic => "Basic",
+            ItemRarity::Fine => "Fine",
+            ItemRarity::Masterwork => "Masterwork",
+            ItemRarity::Rare => "Rare",
+            ItemRarity::Exotic => "Exotic",
+            ItemRarity::Ascended => "Ascended",
+            ItemRarity::Legendary => "Legendary",
+        })
+    }
 }
 
 // NOTE: most can only be purchased in blocks of 10 - we ignore that for now
@@ -158,7 +201,14 @@ impl Item {
             id,
             name: name.to_string(),
             vendor_value,
-            ..Default::default()
+            item_type: ItemType::Armor,
+            rarity: ItemRarity::Junk,
+            level: 0,
+            vendor_value: 0,
+            flags: Vec![],
+            restrictions: Vec![],
+            upgrades_into: None,
+            upgrades_from: None,
         }
     }
 }
@@ -167,7 +217,7 @@ impl Item {
 // name for different rarities
 impl fmt::Display for Item {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if &self.type_name == "Trinket" {
+        if let ItemType::Trinket = &self.item_type {
             write!(f, "{} ({})", &self.name, &self.rarity)
         } else {
             write!(f, "{}", &self.name)
