@@ -57,6 +57,10 @@ struct Opt {
     #[structopt(short, long)]
     count: Option<i32>,
 
+    /// Calculate profit based on a fixed value instead of from buy orders
+    #[structopt(long)]
+    value: Option<i32>,
+
     /// Threshold - min profit per item in copper
     #[structopt(long)]
     threshold: Option<u32>,
@@ -246,6 +250,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         include_ascended: opt.include_ascended,
         count: opt.count,
         threshold: opt.threshold,
+        value: opt.value,
     };
 
     if let Some(item_id) = opt.item_id {
