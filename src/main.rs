@@ -55,6 +55,10 @@ struct Opt {
     #[structopt(short, long)]
     count: Option<i32>,
 
+    /// Calculate profit based on a fixed value instead of from buy orders
+    #[structopt(long)]
+    value: Option<i32>,
+
     /// Only show items craftable by this discipline or comma-separated list of disciplines (e.g. -d=Weaponsmith,Armorsmith)
     #[structopt(short = "d", long = "disciplines", use_delimiter = true)]
     filter_disciplines: Option<Vec<String>>,
@@ -239,6 +243,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         include_timegated: opt.include_timegated,
         include_ascended: opt.include_ascended,
         count: opt.count,
+        value: opt.value,
     };
 
     if let Some(item_id) = opt.item_id {

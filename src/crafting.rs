@@ -14,6 +14,7 @@ pub struct CraftingOptions {
     pub include_timegated: bool,
     pub include_ascended: bool,
     pub count: Option<i32>,
+    pub value: Option<i32>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -299,7 +300,9 @@ pub fn calculate_crafting_profit(
             break;
         };
 
-        let (buy_price, min_buy) = if let Some(buy_price) = tp_listings_map
+        let (buy_price, min_buy) = if let Some(price) = opt.value {
+            (Rational32::from(price), price)
+        } else if let Some(buy_price) = tp_listings_map
             .get_mut(&item_id)
             .unwrap_or_else(|| panic!("Missing listings for item id: {}", item_id))
             .sell(output_item_count.into())
