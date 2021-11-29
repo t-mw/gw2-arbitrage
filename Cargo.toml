@@ -25,3 +25,4 @@ serde_path_to_error = "0.1"
 structopt = "0.3"
 tokio = { version = "1.0", features = ["full"] }
 toml = "0.4"
+phf = { version = "0.9", features = ["macros"] }

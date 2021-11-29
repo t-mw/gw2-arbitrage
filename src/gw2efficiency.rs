@@ -14,7 +14,7 @@ use flate2::Compression;
 
 #[derive(Debug, Deserialize)]
 pub struct Recipe {
-    pub name: String,
+    pub name: String, // used only in error output
     pub output_item_id: u32,
     #[serde(deserialize_with = "treat_error_as_none")]
     pub output_item_count: Option<i32>,

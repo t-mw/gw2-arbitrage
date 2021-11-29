@@ -81,6 +81,10 @@ struct Opt {
 
     #[structopt(long, parse(from_os_str), help = &CONFIG_FILE_HELP)]
     config_file: Option<PathBuf>,
+
+    /// One of "en", "es", "de", "fr", or "zh". Defaults to "en"
+    #[structopt(long)]
+    lang: Option<request::Language>,
 }
 
 static CACHE_DIR_HELP: Lazy<String> = Lazy::new(|| {
@@ -106,6 +110,7 @@ static CONFIG_FILE_HELP: Lazy<String> = Lazy::new(|| {
         r#"Read config options from this file. Supported options:
 
     api_key = "<key-with-unlocks-scope>"
+    lang = "<lang>"
 
 The default file location is '{}'."#,
         config_file(&None).unwrap().display()
@@ -137,7 +142,9 @@ where
 
 #[derive(Debug, Deserialize)]
 struct Config {
+    // API key requires scope unlocks
     api_key: Option<String>,
+    lang: Option<String>,
 }
 
 #[tokio::main]
@@ -147,16 +154,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cache_dir = ensure_dir(cache_dir(&opt.cache_dir)?)?;
     flush_cache(&cache_dir)?;
 
-    // API key requires scope unlocks
     let conf: Config = if let Ok(mut file) = File::open(config_file(&opt.config_file)?) {
         let mut s = String::new();
         file.read_to_string(&mut s)?;
         toml::from_str(&s)?
     } else {
         Config{
-            api_key: None
+            api_key: None,
+            lang: None,
         }
     };
+
+    let mut lang = opt.lang;
+    if let None = lang {
+        if let Some(code) = conf.lang {
+            lang = Some(request::Language::from_code(&code)?);
+        }
+    }
+
     let known_recipes = if let Some(key) = conf.api_key {
         Some(
             request::fetch_account_recipes(&key, &cache_dir)
@@ -181,11 +196,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    let lang_suffix = request::Language::code(&lang)
+        .map_or_else(|| "".to_string(), |c| format!("_{}", c));
+
     let data_dir = ensure_dir(data_dir(&opt.data_dir)?)?;
     let mut api_recipes_path = data_dir.clone();
     api_recipes_path.push("recipes.bin");
     let mut items_path = data_dir.clone();
-    items_path.push("items.bin");
+    items_path.push(format!("items{}.bin", lang_suffix));
     let mut custom_recipes_path = data_dir.clone();
     custom_recipes_path.push("custom.bin");
 
@@ -198,7 +216,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Loading recipes");
     let api_recipes = {
         let mut api_recipes: Vec<api::Recipe> = request::ensure_paginated_cache(
-            &api_recipes_path, "recipes"
+            &api_recipes_path, "recipes", None,
         ).await?;
         // If a recipe has no disciplines it cannot be crafted or discovered.
         // This appears to be used to mark deprecated recipes in the API.
@@ -212,7 +230,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("Loading items");
-    let items: Vec<api::Item> = request::ensure_paginated_cache(&items_path, "items").await?;
+    let items: Vec<api::Item> = request::ensure_paginated_cache(&items_path, "items", lang).await?;
     println!(
         "Loaded {} items cached at '{}'",
         items.len(),
@@ -420,7 +438,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Loading trading post prices");
-    let tp_prices: Vec<api::Price> = request::request_paginated("commerce/prices").await?;
+    let tp_prices: Vec<api::Price> = request::request_paginated("commerce/prices", &None).await?;
     println!("Loaded {} trading post prices", tp_prices.len());
 
     let mut tp_prices_map = vec_to_map(tp_prices, |x| x.id);

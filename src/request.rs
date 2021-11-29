@@ -14,10 +14,60 @@ use std::path::PathBuf;
 use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::str::FromStr;
+use std::{error::Error, fmt};
 
 const PARALLEL_REQUESTS: usize = 10;
 const MAX_PAGE_SIZE: i32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
 const MAX_ITEM_ID_LENGTH: i32 = 200; // error returned for greater than this amount
+
+#[derive(Debug)]
+pub enum Language {
+    English,
+    Spanish,
+    German,
+    French,
+    Chinese
+}
+impl Language {
+    pub fn code(lang: &Option<Language>) -> Option<&str> {
+        if let Some(lang) = lang {
+            match lang {
+                Language::English => None, // English is the default, so leave it off
+                Language::Spanish => Some("es"),
+                Language::German => Some("de"),
+                Language::French => Some("fr"),
+                Language::Chinese => Some("zh"),
+            }
+        } else {
+            None
+        }
+    }
+    pub fn from_code(code: &String) -> Result<Language, LanguageParseError> {
+        Language::from_str(code)
+    }
+}
+#[derive(Debug)]
+pub struct LanguageParseError;
+impl Error for LanguageParseError {}
+impl fmt::Display for LanguageParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Invalid language code selected")
+    }
+}
+impl FromStr for Language {
+    type Err = LanguageParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "en" => Ok(Language::English),
+            "es" => Ok(Language::Spanish),
+            "de" => Ok(Language::German),
+            "fr" => Ok(Language::French),
+            "zh" => Ok(Language::Chinese),
+            _ => Err(LanguageParseError),
+        }
+    }
+}
 
 pub async fn fetch_item_listings(
     item_ids: &[u32],
@@ -39,6 +89,7 @@ pub async fn fetch_item_listings(
 pub async fn ensure_paginated_cache<T>(
     cache_path: impl AsRef<Path>,
     url_path: &str,
+    lang: Option<Language>,
 ) -> Result<Vec<T>, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
@@ -56,7 +107,7 @@ where
             .into()
         })
     } else {
-        let items = request_paginated(url_path).await?;
+        let items = request_paginated(url_path, &lang).await?;
 
         let file = File::create(cache_path)?;
         let stream = DeflateEncoder::new(file, Compression::default());
@@ -66,7 +117,10 @@ where
     }
 }
 
-pub async fn request_paginated<T>(url_path: &str) -> Result<Vec<T>, Box<dyn std::error::Error>>
+pub async fn request_paginated<T>(
+    url_path: &str,
+    lang: &Option<Language>,
+) -> Result<Vec<T>, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
     T: serde::de::DeserializeOwned,
@@ -75,7 +129,7 @@ where
     let mut page_total = None;
 
     // update page total with first request
-    let mut items: Vec<T> = request_page(url_path, page_no, &mut page_total).await?;
+    let mut items: Vec<T> = request_page(url_path, page_no, &mut page_total, lang).await?;
 
     // fetch remaining pages in parallel batches
     page_no += 1;
@@ -84,7 +138,7 @@ where
     let page_total = page_total.expect("Missing page total") + 1;
 
     let request_results = stream::iter((page_no..page_total).map(|page_no| async move {
-        request_page::<T>(url_path, page_no, &mut Some(page_total)).await
+        request_page::<T>(url_path, page_no, &mut Some(page_total), lang).await
     }))
     .buffered(PARALLEL_REQUESTS)
     .collect::<Vec<Result<Vec<T>, Box<dyn std::error::Error>>>>()
@@ -102,15 +156,23 @@ async fn request_page<T>(
     url_path: &str,
     page_no: usize,
     page_total: &mut Option<usize>,
+    lang: &Option<Language>,
 ) -> Result<Vec<T>, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
     T: serde::de::DeserializeOwned,
 {
-    let url = format!(
-        "https://api.guildwars2.com/v2/{}?page={}&page_size={}",
-        url_path, page_no, MAX_PAGE_SIZE
-    );
+    let url = if let Some(code) = Language::code(lang) {
+        format!(
+            "https://api.guildwars2.com/v2/{}?lang={}&page={}&page_size={}",
+            url_path, code, page_no, MAX_PAGE_SIZE
+        )
+    } else {
+        format!(
+            "https://api.guildwars2.com/v2/{}?page={}&page_size={}",
+            url_path, page_no, MAX_PAGE_SIZE
+        )
+    };
 
     println!("Fetching {}", url);
     let response = reqwest::get(&url).await?;
