@@ -4,6 +4,8 @@ use std::fmt;
 
 use phf::{phf_set, phf_map};
 
+use crate::config;
+
 const TRADING_POST_SALES_COMMISSION: i32 = 15; // %
 
 pub fn subtract_trading_post_sales_commission(v: i32) -> Rational32 {
@@ -35,24 +37,30 @@ pub struct PriceInfo {
 }
 
 // types for /recipes
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Recipe {
     pub id: u32,
     pub output_item_id: u32,
     pub output_item_count: i32,
     time_to_craft_ms: i32,
-    pub disciplines: Vec<String>,
+    pub disciplines: Vec<config::Discipline>,
     min_rating: i32,
-    flags: Vec<String>,
+    flags: Vec<RecipeFlags>,
     pub ingredients: Vec<RecipeIngredient>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub enum RecipeFlags {
+    AutoLearned,
+    LearnedFromItem,
 }
 
 impl Recipe {
     pub fn is_purchased(&self) -> bool {
-        self.flags.contains(&"LearnedFromItem".to_string())
+        self.flags.contains(&RecipeFlags::LearnedFromItem)
     }
     pub fn is_automatic(&self) -> bool {
-        self.flags.contains(&"AutoLearned".to_string())
+        self.flags.contains(&RecipeFlags::AutoLearned)
     }
 }
 

@@ -3,6 +3,7 @@ use serde_json::Value;
 
 use crate::api;
 use crate::crafting;
+use crate::config;
 
 use std::fs::File;
 use std::path::Path;
@@ -12,13 +13,16 @@ use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
 
+use std::str::FromStr;
+
 #[derive(Debug, Deserialize)]
 pub struct Recipe {
     pub name: String, // used only in error output
     pub output_item_id: u32,
     #[serde(deserialize_with = "treat_error_as_none")]
     pub output_item_count: Option<i32>,
-    pub disciplines: Vec<String>,
+    #[serde(deserialize_with = "strum_discipline")]
+    pub disciplines: Vec<config::Discipline>,
     pub ingredients: Vec<api::RecipeIngredient>,
 }
 
@@ -69,4 +73,29 @@ where
 {
     let value: Value = Deserialize::deserialize(deserializer)?;
     Ok(T::deserialize(value).ok())
+}
+
+fn strum_discipline<'de, D>(deserializer: D) -> Result<Vec<config::Discipline>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    let value: Value = Deserialize::deserialize(deserializer)?;
+    match value {
+        Value::Array(vec) => {
+            let mut c: Vec<config::Discipline> = Vec::new();
+            for val in vec.iter() {
+                if let Value::String(s) = val {
+                    c.push(config::Discipline::from_str(s).map_err(|e| Error::custom(
+                        format!("Unknown string \"{}\": {}", s, e)
+                    ))?);
+                } else {
+                    return Err(Error::custom("Invalid discipline - not a string"));
+                }
+            }
+            Ok(c)
+        }
+        _ => Err(Error::custom("Invalid discipline - not an array")),
+    }
 }

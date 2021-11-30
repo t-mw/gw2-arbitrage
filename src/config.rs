@@ -8,23 +8,11 @@ use std::time::{Duration, SystemTime};
 
 use once_cell::sync::Lazy;
 use structopt::StructOpt;
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
 use toml;
+use strum::{Display, EnumString, EnumIter, IntoEnumIterator};
 
 use lazy_static::lazy_static;
-
-const VALID_DISCIPLINES: &[&str] = &[
-    "Armorsmith",
-    "Artificer",
-    "Chef",
-    "Huntsman",
-    "Jeweler",
-    "Leatherworker",
-    "Scribe",
-    "Tailor",
-    "Weaponsmith",
-    "Mystic Forge",
-];
 
 pub const CACHE_PREFIX: &str = "cache_";
 
@@ -42,7 +30,7 @@ pub struct Config {
     pub crafting: CraftingOptions,
 
     pub output_csv: Option<PathBuf>,
-    pub filter_disciplines: Option<Vec<String>>,
+    pub filter_disciplines: Option<Vec<Discipline>>,
     pub lang: Option<Language>,
     pub api_key: Option<String>,
 
@@ -76,17 +64,7 @@ impl Config {
         config.lang = opt.lang;
         config.item_id = opt.item_id;
 
-        config.filter_disciplines = opt.filter_disciplines.filter(|v| !v.is_empty());
-        if let Some(filter_disciplines) = &config.filter_disciplines {
-            for discipline in filter_disciplines {
-                if !VALID_DISCIPLINES.contains(&discipline.as_str()) {
-                    panic!("Invalid discipline: {} (valid values are {})",
-                            discipline,
-                            VALID_DISCIPLINES.join(", ")
-                    );
-                }
-            }
-        };
+        config.filter_disciplines = opt.filter_disciplines;
 
 
         let file: ConfigFile = match get_file_config(&opt.config_file) {
@@ -196,9 +174,8 @@ struct Opt {
     #[structopt(long)]
     threshold: Option<u32>,
 
-    /// Only show items craftable by this discipline or comma-separated list of disciplines (e.g. -d=Weaponsmith,Armorsmith)
-    #[structopt(short = "d", long = "disciplines", use_delimiter = true)]
-    filter_disciplines: Option<Vec<String>>,
+    #[structopt(short = "d", long = "disciplines", use_delimiter = true, help = &DISCIPLINES_HELP)]
+    filter_disciplines: Option<Vec<Discipline>>,
 
     /// Download recipes and items from the GW2 API, replacing any previously cached recipes and items
     #[structopt(long)]
@@ -245,6 +222,14 @@ static CONFIG_FILE_HELP: Lazy<String> = Lazy::new(|| {
 
 The default file location is '{}'."#,
         config_file(&None).unwrap().display()
+    )
+});
+
+static DISCIPLINES_HELP: Lazy<String> = Lazy::new(|| {
+    format!(r#"Only show items craftable by this discipline or comma-separated list of disciplines (e.g. -d=Weaponsmith,Armorsmith)
+
+valid values: {}"#,
+        Discipline::iter().map(|d| d.to_string()).collect::<Vec<String>>().join(", ")
     )
 });
 
@@ -296,6 +281,28 @@ impl FromStr for Language {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Display, EnumString, EnumIter)]
+pub enum Discipline {
+    Artificer,
+    Armorsmith,
+    Chef,
+    Huntsman,
+    Jeweler,
+    Leatherworker,
+    Tailor,
+    Weaponsmith,
+    Scribe,
+    // A few more for compatibility with gw2efficiency
+    #[strum(serialize = "Mystic Forge")]
+    MysticForge,
+    #[strum(serialize = "Double Click")]
+    DoubleClick,
+    Salvage,
+    Merchant,
+    Charge,
+    Achievement,
+    Growing,
+}
 
 fn ensure_dir(dir: &PathBuf) -> Result<&PathBuf, Box<dyn std::error::Error>> {
     if !dir.exists() {
