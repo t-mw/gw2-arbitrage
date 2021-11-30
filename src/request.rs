@@ -14,60 +14,12 @@ use std::path::PathBuf;
 use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::str::FromStr;
-use std::{error::Error, fmt};
+
+use crate::config;
 
 const PARALLEL_REQUESTS: usize = 10;
 const MAX_PAGE_SIZE: i32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
 const MAX_ITEM_ID_LENGTH: i32 = 200; // error returned for greater than this amount
-
-#[derive(Debug)]
-pub enum Language {
-    English,
-    Spanish,
-    German,
-    French,
-    Chinese
-}
-impl Language {
-    pub fn code(lang: &Option<Language>) -> Option<&str> {
-        if let Some(lang) = lang {
-            match lang {
-                Language::English => None, // English is the default, so leave it off
-                Language::Spanish => Some("es"),
-                Language::German => Some("de"),
-                Language::French => Some("fr"),
-                Language::Chinese => Some("zh"),
-            }
-        } else {
-            None
-        }
-    }
-    pub fn from_code(code: &String) -> Result<Language, LanguageParseError> {
-        Language::from_str(code)
-    }
-}
-#[derive(Debug)]
-pub struct LanguageParseError;
-impl Error for LanguageParseError {}
-impl fmt::Display for LanguageParseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Invalid language code selected")
-    }
-}
-impl FromStr for Language {
-    type Err = LanguageParseError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "en" => Ok(Language::English),
-            "es" => Ok(Language::Spanish),
-            "de" => Ok(Language::German),
-            "fr" => Ok(Language::French),
-            "zh" => Ok(Language::Chinese),
-            _ => Err(LanguageParseError),
-        }
-    }
-}
 
 pub async fn fetch_item_listings(
     item_ids: &[u32],
@@ -89,7 +41,7 @@ pub async fn fetch_item_listings(
 pub async fn ensure_paginated_cache<T>(
     cache_path: impl AsRef<Path>,
     url_path: &str,
-    lang: Option<Language>,
+    lang: &Option<config::Language>,
 ) -> Result<Vec<T>, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
@@ -107,7 +59,7 @@ where
             .into()
         })
     } else {
-        let items = request_paginated(url_path, &lang).await?;
+        let items = request_paginated(url_path, lang).await?;
 
         let file = File::create(cache_path)?;
         let stream = DeflateEncoder::new(file, Compression::default());
@@ -119,7 +71,7 @@ where
 
 pub async fn request_paginated<T>(
     url_path: &str,
-    lang: &Option<Language>,
+    lang: &Option<config::Language>,
 ) -> Result<Vec<T>, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
@@ -156,13 +108,13 @@ async fn request_page<T>(
     url_path: &str,
     page_no: usize,
     page_total: &mut Option<usize>,
-    lang: &Option<Language>,
+    lang: &Option<config::Language>,
 ) -> Result<Vec<T>, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
     T: serde::de::DeserializeOwned,
 {
-    let url = if let Some(code) = Language::code(lang) {
+    let url = if let Some(code) = config::Language::code(lang) {
         format!(
             "https://api.guildwars2.com/v2/{}?lang={}&page={}&page_size={}",
             url_path, code, page_no, MAX_PAGE_SIZE
@@ -250,7 +202,7 @@ where
     let hash = hash.finish();
 
     let mut cache_file = cache_dir.clone();
-    cache_file.push(format!("cache_{}", hash));
+    cache_file.push(format!("{}{}", config::CACHE_PREFIX, hash));
 
     if let Ok(file) = File::open(&cache_file) {
         let stream = DeflateDecoder::new(file);

@@ -401,6 +401,7 @@ dependencies = [
  "dirs",
  "flate2",
  "futures",
+ "lazy_static",
  "num-rational",
  "num-traits",
  "once_cell",

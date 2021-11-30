@@ -26,3 +26,4 @@ structopt = "0.3"
 tokio = { version = "1.0", features = ["full"] }
 toml = "0.4"
 phf = { version = "0.9", features = ["macros"] }
+lazy_static = "1.4"

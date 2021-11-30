@@ -9,14 +9,7 @@ use num_traits::{Signed, Zero};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 
-#[derive(Debug, Default)]
-pub struct CraftingOptions {
-    pub include_timegated: bool,
-    pub include_ascended: bool,
-    pub count: Option<i32>,
-    pub threshold: Option<u32>,
-    pub value: Option<i32>,
-}
+use crate::config;
 
 #[derive(Debug, Copy, Clone)]
 pub struct EstimatedCraftingCost {
@@ -31,7 +24,7 @@ pub fn calculate_estimated_min_crafting_cost(
     recipes_map: &HashMap<u32, Recipe>,
     items_map: &HashMap<u32, api::Item>,
     tp_prices_map: &HashMap<u32, api::Price>,
-    opt: &CraftingOptions,
+    opt: &config::CraftingOptions,
 ) -> Option<EstimatedCraftingCost> {
     let item = items_map.get(&item_id);
     let recipe = recipes_map.get(&item_id);
@@ -113,7 +106,7 @@ fn calculate_precise_min_crafting_cost(
     add_recipe: &mut dyn FnMut(&Recipe) -> (),
     tp_listings_map: &mut BTreeMap<u32, ItemListings>,
     context: &mut PreciseCraftingCostContext,
-    opt: &CraftingOptions,
+    opt: &config::CraftingOptions,
 ) -> Option<PreciseCraftingCost> {
     let item = items_map.get(&item_id);
     let recipe = recipes_map.get(&item_id);
@@ -223,7 +216,7 @@ pub fn calculate_crafting_profit(
     items_map: &HashMap<u32, api::Item>,
     tp_listings_map: &HashMap<u32, api::ItemListings>,
     mut purchased_ingredients: Option<&mut HashMap<(u32, Source), PurchasedIngredient>>,
-    opt: &CraftingOptions,
+    opt: &config::CraftingOptions,
 ) -> Option<ProfitableItem> {
     let mut tp_listings_map: BTreeMap<u32, ItemListings> = tp_listings_map
         .clone()

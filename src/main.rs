@@ -1,19 +1,13 @@
 use colored::Colorize;
 use num_rational::Rational32;
 use num_traits::ToPrimitive;
-use once_cell::sync::Lazy;
 use rayon::prelude::*;
-use serde::{Serialize, Serializer, Deserialize};
-use structopt::StructOpt;
-use toml;
+use serde::{Serialize, Serializer};
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
-use std::fs;
-use std::fs::File;
-use std::io::Read;
 use std::cmp::Ordering;
 
+mod config;
 mod api;
 mod crafting;
 mod gw2efficiency;
@@ -21,101 +15,9 @@ mod request;
 #[cfg(test)]
 mod tests;
 
-const VALID_DISCIPLINES: &[&str] = &[
-    "Armorsmith",
-    "Artificer",
-    "Chef",
-    "Huntsman",
-    "Jeweler",
-    "Leatherworker",
-    "Scribe",
-    "Tailor",
-    "Weaponsmith",
-    "Mystic Forge",
-];
+use config::CONFIG;
 
 const ITEM_STACK_SIZE: i32 = 250; // GW2 uses a "stack size" of 250
-
-#[derive(StructOpt, Debug)]
-struct Opt {
-    /// Include timegated recipes such as Deldrimor Steel Ingot
-    #[structopt(short = "t", long)]
-    include_timegated: bool,
-
-    /// Include recipes that require Piles of Bloodstone Dust, Dragonite Ore or Empyreal Fragments
-    #[structopt(short = "a", long)]
-    include_ascended: bool,
-
-    /// Output the full list of profitable recipes to this CSV file
-    #[structopt(short, long, parse(from_os_str))]
-    output_csv: Option<PathBuf>,
-
-    /// Print a shopping list of ingredients for the given item id
-    item_id: Option<u32>,
-
-    /// Limit the maximum number of items produced for a recipe
-    #[structopt(short, long)]
-    count: Option<i32>,
-
-    /// Calculate profit based on a fixed value instead of from buy orders
-    #[structopt(long)]
-    value: Option<i32>,
-
-    /// Threshold - min profit per item in copper
-    #[structopt(long)]
-    threshold: Option<u32>,
-
-    /// Only show items craftable by this discipline or comma-separated list of disciplines (e.g. -d=Weaponsmith,Armorsmith)
-    #[structopt(short = "d", long = "disciplines", use_delimiter = true)]
-    filter_disciplines: Option<Vec<String>>,
-
-    /// Download recipes and items from the GW2 API, replacing any previously cached recipes and items
-    #[structopt(long)]
-    reset_data: bool,
-
-    #[structopt(long, parse(from_os_str), help = &CACHE_DIR_HELP)]
-    cache_dir: Option<PathBuf>,
-
-    #[structopt(long, parse(from_os_str), help = &DATA_DIR_HELP)]
-    data_dir: Option<PathBuf>,
-
-    #[structopt(long, parse(from_os_str), help = &CONFIG_FILE_HELP)]
-    config_file: Option<PathBuf>,
-
-    /// One of "en", "es", "de", "fr", or "zh". Defaults to "en"
-    #[structopt(long)]
-    lang: Option<request::Language>,
-}
-
-static CACHE_DIR_HELP: Lazy<String> = Lazy::new(|| {
-    format!(
-        r#"Save cached API calls to this directory
-
-If provided, the parent directory of the cache directory must already exist. Defaults to '{}'."#,
-        cache_dir(&None).unwrap().display()
-    )
-});
-
-static DATA_DIR_HELP: Lazy<String> = Lazy::new(|| {
-    format!(
-        r#"Save cached recipes and items to this directory
-
-If provided, the parent directory of the cache directory must already exist. Defaults to '{}'."#,
-        data_dir(&None).unwrap().display()
-    )
-});
-
-static CONFIG_FILE_HELP: Lazy<String> = Lazy::new(|| {
-    format!(
-        r#"Read config options from this file. Supported options:
-
-    api_key = "<key-with-unlocks-scope>"
-    lang = "<lang>"
-
-The default file location is '{}'."#,
-        config_file(&None).unwrap().display()
-    )
-});
 
 #[derive(Debug, Serialize)]
 struct OutputRow {
@@ -140,41 +42,11 @@ where
     serializer.serialize_f64((PRECISION * value.to_f64().unwrap_or(0.0)).round() / PRECISION)
 }
 
-#[derive(Debug, Deserialize)]
-struct Config {
-    // API key requires scope unlocks
-    api_key: Option<String>,
-    lang: Option<String>,
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let opt = Opt::from_args();
-
-    let cache_dir = ensure_dir(cache_dir(&opt.cache_dir)?)?;
-    flush_cache(&cache_dir)?;
-
-    let conf: Config = if let Ok(mut file) = File::open(config_file(&opt.config_file)?) {
-        let mut s = String::new();
-        file.read_to_string(&mut s)?;
-        toml::from_str(&s)?
-    } else {
-        Config{
-            api_key: None,
-            lang: None,
-        }
-    };
-
-    let mut lang = opt.lang;
-    if let None = lang {
-        if let Some(code) = conf.lang {
-            lang = Some(request::Language::from_code(&code)?);
-        }
-    }
-
-    let known_recipes = if let Some(key) = conf.api_key {
+    let known_recipes = if let Some(key) = &CONFIG.api_key {
         Some(
-            request::fetch_account_recipes(&key, &cache_dir)
+            request::fetch_account_recipes(&key, &CONFIG.cache_dir)
             .await
             .map_err(|e| format!("API error fetching recipe unlocks: {}", e))?
         )
@@ -182,41 +54,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
-    let filter_disciplines = opt.filter_disciplines.as_ref().filter(|v| !v.is_empty());
-    if let Some(filter_disciplines) = filter_disciplines {
-        for discipline in filter_disciplines {
-            if !VALID_DISCIPLINES.contains(&discipline.as_str()) {
-                return Err(format!(
-                    "Invalid discipline: {} (valid values are {})",
-                    discipline,
-                    VALID_DISCIPLINES.join(", ")
-                )
-                .into());
-            }
-        }
-    }
-
-    let lang_suffix = request::Language::code(&lang)
-        .map_or_else(|| "".to_string(), |c| format!("_{}", c));
-
-    let data_dir = ensure_dir(data_dir(&opt.data_dir)?)?;
-    let mut api_recipes_path = data_dir.clone();
-    api_recipes_path.push("recipes.bin");
-    let mut items_path = data_dir.clone();
-    items_path.push(format!("items{}.bin", lang_suffix));
-    let mut custom_recipes_path = data_dir.clone();
-    custom_recipes_path.push("custom.bin");
-
-    if opt.reset_data {
-        remove_data_file(&api_recipes_path)?;
-        remove_data_file(&items_path)?;
-        remove_data_file(&custom_recipes_path)?;
-    }
-
     println!("Loading recipes");
     let api_recipes = {
         let mut api_recipes: Vec<api::Recipe> = request::ensure_paginated_cache(
-            &api_recipes_path, "recipes", None,
+            &CONFIG.api_recipes_file, "recipes", &None,
         ).await?;
         // If a recipe has no disciplines it cannot be crafted or discovered.
         // This appears to be used to mark deprecated recipes in the API.
@@ -226,19 +67,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "Loaded {} recipes cached at '{}'",
         api_recipes.len(),
-        api_recipes_path.display()
-    );
-
-    println!("Loading items");
-    let items: Vec<api::Item> = request::ensure_paginated_cache(&items_path, "items", lang).await?;
-    println!(
-        "Loaded {} items cached at '{}'",
-        items.len(),
-        items_path.display()
+        CONFIG.api_recipes_file.display()
     );
 
     println!("Loading custom recipes");
-    let custom_recipes: Vec<crafting::Recipe> = gw2efficiency::fetch_custom_recipes(&custom_recipes_path)
+    let custom_recipes: Vec<crafting::Recipe> = gw2efficiency::fetch_custom_recipes(&CONFIG.custom_recipes_file)
         .await
         .unwrap_or_else(|e| {
             eprintln!("Failed to fetch custom recipes: {}", e);
@@ -247,7 +80,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "Loaded {} custom recipes cached at '{}'",
         custom_recipes.len(),
-        custom_recipes_path.display()
+        CONFIG.custom_recipes_file.display()
+    );
+
+    println!("Loading items");
+    let items: Vec<api::Item> = request::ensure_paginated_cache(&CONFIG.items_file, "items", &CONFIG.lang).await?;
+    println!(
+        "Loaded {} items cached at '{}'",
+        items.len(),
+        CONFIG.items_file.display()
     );
 
     let recipes: Vec<crafting::Recipe> = custom_recipes
@@ -263,15 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         recipes_map.remove(&recipe_id);
     }
 
-    let crafting_options = crafting::CraftingOptions {
-        include_timegated: opt.include_timegated,
-        include_ascended: opt.include_ascended,
-        count: opt.count,
-        threshold: opt.threshold,
-        value: opt.value,
-    };
-
-    if let Some(item_id) = opt.item_id {
+    if let Some(item_id) = CONFIG.item_id {
         let item = items_map.get(&item_id).expect("Item not found");
 
         let mut ingredient_ids = vec![];
@@ -282,7 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         request_listing_item_ids.sort_unstable();
         request_listing_item_ids.dedup();
 
-        let tp_listings = request::fetch_item_listings(&request_listing_item_ids, Some(&cache_dir)).await?;
+        let tp_listings = request::fetch_item_listings(&request_listing_item_ids, Some(&CONFIG.cache_dir)).await?;
         let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
 
         let mut purchased_ingredients = Default::default();
@@ -293,10 +126,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &items_map,
             &tp_listings_map,
             Some(&mut purchased_ingredients),
-            &crafting::CraftingOptions {
+            &config::CraftingOptions {
                 include_timegated: true,
                 include_ascended: true,
-                ..crafting_options
+                ..CONFIG.crafting
             },
         );
 
@@ -454,7 +287,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        if let Some(filter_disciplines) = filter_disciplines {
+        if let Some(filter_disciplines) = &CONFIG.filter_disciplines {
             let mut has_discipline = false;
             for discipline in filter_disciplines {
                 if recipe.disciplines.iter().any(|s| s == discipline) {
@@ -485,7 +318,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &recipes_map,
             &items_map,
             &tp_prices_map,
-            &crafting_options,
+            &CONFIG.crafting,
         ) {
             if tp_prices.effective_buy_price() > crafting_cost {
                 profitable_item_ids.push(*item_id);
@@ -529,14 +362,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &items_map,
                 &tp_listings_map_for_item,
                 None,
-                &crafting_options,
+                &CONFIG.crafting,
             )
         })
         .collect();
 
     profitable_items.sort_unstable_by_key(|item| item.profit);
 
-    let mut csv_writer = if let Some(path) = opt.output_csv {
+    let mut csv_writer = if let Some(path) = &CONFIG.output_csv {
         Some(csv::Writer::from_path(path)?)
     } else {
         None
@@ -662,96 +495,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-}
-
-fn ensure_dir(dir: PathBuf) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    if !dir.exists() {
-        std::fs::create_dir(&dir)
-            .map_err(|e| format!("Failed to create '{}' ({})", dir.display(), e).into())
-            .and(Ok(dir))
-    } else {
-        Ok(dir)
-    }
-}
-
-fn cache_dir(dir: &Option<PathBuf>) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    if let Some(dir) = dir {
-        return Ok(dir.clone());
-    }
-    dirs::cache_dir()
-        .filter(|d| d.exists())
-        .map(|mut cache_dir| {
-            cache_dir.push("gw2-arbitrage");
-            cache_dir
-        })
-        .or_else(|| std::env::current_dir().ok())
-        .ok_or_else(|| "Failed to access current working directory".into())
-}
-
-fn flush_cache(cache_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    // flush any cache files older than 5 mins - which is how long the API caches url results.
-    // Assume our request triggered the cache
-    // Prefix w/"cache_"; on Windows the user cache and user local data folders are the same
-    let expired = SystemTime::now() - Duration::new(300, 0);
-    for file in fs::read_dir(&cache_dir)? {
-        let file = file?;
-        let filename = file.file_name().into_string();
-        if let Ok(name) = filename {
-            if !name.starts_with("cache_") {
-                continue;
-            }
-        }
-        let metadata = file.metadata()?;
-        if !metadata.is_file() {
-            continue;
-        }
-        if metadata.created()? <= expired {
-            fs::remove_file(file.path())?;
-        }
-    }
-    Ok(())
-}
-
-fn data_dir(dir: &Option<PathBuf>) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    if let Some(dir) = dir {
-        return Ok(dir.clone());
-    }
-    dirs::data_dir()
-        .filter(|d| d.exists())
-        .map(|mut data_dir| {
-            data_dir.push("gw2-arbitrage");
-            data_dir
-        })
-        .or_else(|| std::env::current_dir().ok())
-        .ok_or_else(|| "Failed to access current working directory".into())
-}
-
-fn remove_data_file(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>>
-{
-    if file.exists() {
-        println!("Removing existing data file at '{}'", file.display());
-        std::fs::remove_file(&file)
-            .map_err(|e| format!("Failed to remove '{}' ({})", file.display(), e))?;
-    }
-    Ok(())
-}
-
-fn config_file(file: &Option<PathBuf>) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    if let Some(file) = file {
-        return Ok(file.clone());
-    }
-    dirs::config_dir()
-        .filter(|d| d.exists())
-        .map(|mut config_dir| {
-            config_dir.push("gw2-arbitrage");
-            config_dir
-        })
-        .or_else(|| std::env::current_dir().ok())
-        .and_then(|mut path| {
-            path.push("gw2-arbitrage.toml");
-            Some(path)
-        })
-        .ok_or_else(|| "Failed to access current working directory".into())
 }
 
 fn vec_to_map<T, F>(v: Vec<T>, id_fn: F) -> HashMap<u32, T>
