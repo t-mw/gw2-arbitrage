@@ -18,6 +18,7 @@ use std::hash::{Hash, Hasher};
 const PARALLEL_REQUESTS: usize = 10;
 const MAX_PAGE_SIZE: i32 = 200; // https://wiki.guildwars2.com/wiki/API:2#Paging
 const MAX_ITEM_ID_LENGTH: i32 = 200; // error returned for greater than this amount
+pub const CACHE_PREFIX: &str = "cache_";
 
 pub async fn fetch_item_listings(
     item_ids: &[u32],
@@ -188,7 +189,7 @@ where
     let hash = hash.finish();
 
     let mut cache_file = cache_dir.clone();
-    cache_file.push(format!("cache_{}", hash));
+    cache_file.push(format!("{}{}", CACHE_PREFIX, hash));
 
     if let Ok(file) = File::open(&cache_file) {
         let stream = DeflateDecoder::new(file);

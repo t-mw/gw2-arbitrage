@@ -648,13 +648,13 @@ fn cache_dir(dir: &Option<PathBuf>) -> Result<PathBuf, Box<dyn std::error::Error
 fn flush_cache(cache_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     // flush any cache files older than 5 mins - which is how long the API caches url results.
     // Assume our request triggered the cache
-    // Prefix w/"cache_"; on Windows the user cache and user local data folders are the same
+    // Give a prefix; on Windows the user cache and user local data folders are the same
     let expired = SystemTime::now() - Duration::new(300, 0);
     for file in fs::read_dir(&cache_dir)? {
         let file = file?;
         let filename = file.file_name().into_string();
         if let Ok(name) = filename {
-            if !name.starts_with("cache_") {
+            if !name.starts_with(request::CACHE_PREFIX) {
                 continue;
             }
         }
