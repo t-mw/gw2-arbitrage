@@ -320,12 +320,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ordering::Greater
             }
         });
+        let mut inventory = 0;
         for ((ingredient_id, ingredient_source), ingredient) in sorted_ingredients {
             let ingredient_count = ingredient.count.ceil().to_integer();
             let ingredient_count_msg = if ingredient_count > ITEM_STACK_SIZE {
                 let stack_count = ingredient_count / ITEM_STACK_SIZE;
+                inventory += stack_count;
                 let remainder = ingredient_count % ITEM_STACK_SIZE;
                 let remainder_msg = if remainder != 0 {
+                    inventory += 1;
                     format!(" + {}", remainder)
                 } else {
                     "".to_string()
@@ -335,6 +338,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ingredient_count, stack_count, ITEM_STACK_SIZE, remainder_msg
                 )
             } else {
+                inventory += 1;
                 ingredient_count.to_string()
             };
             let source_msg = match *ingredient_source {
@@ -379,6 +383,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         println!("============");
+        println!("Max inventory slots: {}", inventory + 1); // + 1 for the crafting output
         println!(
             "Crafting steps: https://gw2efficiency.com/crafting/calculator/a~1!b~1!c~1!d~{}-{}",
             profitable_item.count, item_id
