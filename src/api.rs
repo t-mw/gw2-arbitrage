@@ -2,6 +2,8 @@ use num_rational::Rational32;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+use phf::{phf_set, phf_map};
+
 const TRADING_POST_SALES_COMMISSION: i32 = 15; // %
 
 pub fn subtract_trading_post_sales_commission(v: i32) -> Rational32 {
@@ -36,8 +38,6 @@ pub struct PriceInfo {
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Recipe {
     pub id: u32,
-    #[serde(rename = "type")]
-    type_name: String,
     pub output_item_id: u32,
     pub output_item_count: i32,
     time_to_craft_ms: i32,
@@ -45,7 +45,6 @@ pub struct Recipe {
     min_rating: i32,
     flags: Vec<String>,
     pub ingredients: Vec<RecipeIngredient>,
-    chat_link: String,
 }
 
 impl Recipe {
@@ -64,14 +63,13 @@ pub struct RecipeIngredient {
 }
 
 // types for /items
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Item {
     pub id: u32,
-    chat_link: String,
     pub name: String,
     #[serde(rename = "type")]
-    type_name: String,
-    rarity: String,
+    item_type: ItemType,
+    rarity: ItemRarity,
     level: i32,
     vendor_value: i32,
     flags: Vec<String>,
@@ -80,36 +78,95 @@ pub struct Item {
     upgrades_from: Option<Vec<ItemUpgrade>>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ItemType {
+    Armor,
+    Back,
+    Bag,
+    Consumable,
+    Container,
+    CraftingMaterial,
+    Gathering,
+    Gizmo,
+    Key,
+    MiniPet,
+    Tool,
+    Trait,
+    Trinket,
+    Trophy,
+    UpgradeComponent,
+    Weapon,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ItemRarity {
+    Junk,
+    Basic,
+    Fine,
+    Masterwork,
+    Rare,
+    Exotic,
+    Ascended,
+    Legendary,
+}
+// TODO: Localize
+impl fmt::Display for ItemRarity {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match &self {
+            ItemRarity::Junk => "Junk",
+            ItemRarity::Basic => "Basic",
+            ItemRarity::Fine => "Fine",
+            ItemRarity::Masterwork => "Masterwork",
+            ItemRarity::Rare => "Rare",
+            ItemRarity::Exotic => "Exotic",
+            ItemRarity::Ascended => "Ascended",
+            ItemRarity::Legendary => "Legendary",
+        })
+    }
+}
+
+// NOTE: most can only be purchased in blocks of 10 - we ignore that for now
+// NOTE: doesn't include karma purchases, since the karma to gold rate is undefined and we don't
+// support multiple currencies
+static VENDOR_ITEMS: phf::Set<u32> = phf_set! {
+    19792_u32, // Spool of Jute Thread - 10
+    19789_u32, // Spool of Wool Thread - 10
+    19794_u32, // Spool of Cotton Thread - 10
+    19793_u32, // Spool of Linen Thread - 10
+    19791_u32, // Spool of Silk Thread - 10
+    19790_u32, // Spool of Gossamer Thread - 10
+    13010_u32, // Minor Rune of Holding
+    13006_u32, // Rune of Holding
+    13007_u32, // Major Rune of Holding
+    13008_u32, // Greater Rune of Holding
+    13009_u32, // Superior Rune of Holding
+    19704_u32, // Lump of Tin - 10
+    19750_u32, // Lump of Coal - 10
+    19924_u32, // Lump of Primordium - 10
+    12157_u32, // Jar of Vinegar - 10
+    12151_u32, // Packet of Baking Powder - 10
+    12158_u32, // Jar of Vegetable Oil - 10
+    12153_u32, // Packet of Salt - 10
+    12155_u32, // Bag of Sugar - 10
+    12156_u32, // Jug of Water - 10 - only 10?
+    12324_u32, // Bag of Starch - 10
+    12136_u32, // Bag of Flour - 1, from some vendors, 10 from master chefs
+    12271_u32, // Bottle of Soy Sauce - 10
+    76839_u32, // Milling Basin - can buy one at a time from chefs and scribe
+    70647_u32, // Crystalline Bottle - can buy one at a time from master scribe
+    75762_u32, // Bag of Mortar - can buy one at a time from master scribe
+    75087_u32, // Essence of Elegance - buy one at a time
+};
+// Sell price is _not_ buy price * 8
+static SPECIAL_VENDOR_ITEMS: phf::Map<u32, i32> = phf_map! {
+    46747_u32 => 150, // Thermocatalytic Reagent - 1496 for 10
+    91739_u32 => 150, // Pile of Compost Starter - 1496 for 10
+    91702_u32 => 200, // Pile of Powdered Gelatin Mix - 5 for 1000; prereq achievement
+    90201_u32 => 40000, // Smell-Enhancing Culture; prereq achievement
+};
 impl Item {
     pub fn vendor_cost(&self) -> Option<i32> {
-        let name = &self.name;
-
-        if name == "Thermocatalytic Reagent" {
-            Some(150)
-        } else if name == "Spool of Jute Thread"
-            || name == "Spool of Wool Thread"
-            || name == "Spool of Cotton Thread"
-            || name == "Spool of Linen Thread"
-            || name == "Spool of Silk Thread"
-            || name == "Spool of Gossamer Thread"
-            || (name.ends_with("Rune of Holding") && !name.starts_with("Supreme"))
-            || name == "Lump of Tin"
-            || name == "Lump of Coal"
-            || name == "Lump of Primordium"
-            || name == "Jar of Vinegar"
-            || name == "Packet of Baking Powder"
-            || name == "Jar of Vegetable Oil"
-            || name == "Packet of Salt"
-            || name == "Bag of Sugar"
-            || name == "Jug of Water"
-            || name == "Bag of Starch"
-            || name == "Bag of Flour"
-            || name == "Bottle of Soy Sauce"
-            || name == "Milling Basin"
-            || name == "Crystalline Bottle"
-            || name == "Bag of Mortar"
-            || name == "Essence of Elegance"
-        {
+        if VENDOR_ITEMS.contains(&self.id) {
             if self.vendor_value > 0 {
                 // standard vendor sell price is generally buy price * 8, see:
                 //  https://forum-en.gw2archive.eu/forum/community/api/How-to-get-the-vendor-sell-price
@@ -117,12 +174,8 @@ impl Item {
             } else {
                 None
             }
-        } else if name == "Pile of Compost Starter" {
-            Some(150)
-        } else if name == "Pile of Powdered Gelatin Mix" {
-            Some(200)
-        } else if name == "Smell-Enhancing Culture" {
-            Some(40000)
+        } else if SPECIAL_VENDOR_ITEMS.contains_key(&self.id) {
+            Some(SPECIAL_VENDOR_ITEMS[&self.id])
         } else {
             None
         }
@@ -138,8 +191,8 @@ impl Item {
     }
 
     pub fn is_common_ascended_material(&self) -> bool {
-        let name = &self.name;
-        name == "Empyreal Fragment" || name == "Dragonite Ore" || name == "Pile of Bloodstone Dust"
+        // Empyreal Fragment, Dragonite Ore, Pile of Bloodstone Dust
+        self.id == 46735 || self.id == 46733 || self.id == 46731
     }
 
     #[cfg(test)]
@@ -148,7 +201,14 @@ impl Item {
             id,
             name: name.to_string(),
             vendor_value,
-            ..Default::default()
+            item_type: ItemType::Armor,
+            rarity: ItemRarity::Junk,
+            level: 0,
+            vendor_value: 0,
+            flags: Vec![],
+            restrictions: Vec![],
+            upgrades_into: None,
+            upgrades_from: None,
         }
     }
 }
@@ -157,7 +217,7 @@ impl Item {
 // name for different rarities
 impl fmt::Display for Item {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if &self.type_name == "Trinket" {
+        if let ItemType::Trinket = &self.item_type {
             write!(f, "{} ({})", &self.name, &self.rarity)
         } else {
             write!(f, "{}", &self.name)
