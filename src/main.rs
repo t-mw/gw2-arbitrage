@@ -11,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::fs::File;
 use std::io::Read;
+use std::cmp::Ordering;
 
 mod api;
 mod crafting;
@@ -301,13 +302,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             copper_to_string(profitable_item.crafting_cost.to_integer()),
             copper_to_string(profitable_item.breakeven),
         );
+
         println!("============");
-        for ((ingredient_id, ingredient_source), ingredient) in &purchased_ingredients {
+        let mut sorted_ingredients: Vec<(&(u32, crafting::Source), &crafting::PurchasedIngredient)> = purchased_ingredients.iter().collect();
+        sorted_ingredients.sort_unstable_by(|a, b| {
+            if b.0.1 == a.0.1 {
+                match b.1.count.cmp(&a.1.count) {
+                    Ordering::Equal => match b.1.total_cost.cmp(&a.1.total_cost) {
+                        Ordering::Equal => b.0.0.cmp(&a.0.0),
+                        v => v,
+                    },
+                    v => v,
+                }
+            } else if b.0.1 == crafting::Source::Vendor {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        });
+        let mut inventory = 0;
+        for ((ingredient_id, ingredient_source), ingredient) in sorted_ingredients {
             let ingredient_count = ingredient.count.ceil().to_integer();
             let ingredient_count_msg = if ingredient_count > ITEM_STACK_SIZE {
                 let stack_count = ingredient_count / ITEM_STACK_SIZE;
+                inventory += stack_count;
                 let remainder = ingredient_count % ITEM_STACK_SIZE;
                 let remainder_msg = if remainder != 0 {
+                    inventory += 1;
                     format!(" + {}", remainder)
                 } else {
                     "".to_string()
@@ -317,6 +338,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ingredient_count, stack_count, ITEM_STACK_SIZE, remainder_msg
                 )
             } else {
+                inventory += 1;
                 ingredient_count.to_string()
             };
             let source_msg = match *ingredient_source {
@@ -359,7 +381,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 source_msg,
             );
         }
+
         println!("============");
+        println!("Max inventory slots: {}", inventory + 1); // + 1 for the crafting output
         println!(
             "Crafting steps: https://gw2efficiency.com/crafting/calculator/a~1!b~1!c~1!d~{}-{}",
             profitable_item.count, item_id
