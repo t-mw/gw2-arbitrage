@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         api_recipes
     };
     println!(
-        "Loaded {} recipes cached at '{}'",
+        "Loaded {} recipes stored at '{}'",
         api_recipes.len(),
         CONFIG.api_recipes_file.display()
     );
@@ -78,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             vec![]
         });
     println!(
-        "Loaded {} custom recipes cached at '{}'",
+        "Loaded {} custom recipes stored at '{}'",
         custom_recipes.len(),
         CONFIG.custom_recipes_file.display()
     );
@@ -86,7 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Loading items");
     let items: Vec<api::Item> = request::ensure_paginated_cache(&CONFIG.items_file, "items", &CONFIG.lang).await?;
     println!(
-        "Loaded {} items cached at '{}'",
+        "Loaded {} items stored at '{}'",
         items.len(),
         CONFIG.items_file.display()
     );
