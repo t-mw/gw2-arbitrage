@@ -560,7 +560,7 @@ pub struct Recipe {
     pub id: Option<u32>,
     pub output_item_id: u32,
     pub output_item_count: i32,
-    pub disciplines: Vec<String>,
+    pub disciplines: Vec<config::Discipline>,
     pub ingredients: Vec<api::RecipeIngredient>,
     source: RecipeSource,
 }
@@ -602,7 +602,7 @@ impl TryFrom<gw2efficiency::Recipe> for Recipe {
         // outputs appear to be account bound anyway, so won't be on TP.
         // There are some useful Scribe WvW BPs in the data, so ignoring all
         // normal discipline recipes would catch those too.
-        let source = if recipe.disciplines.contains(&"Achievement".to_string()) {
+        let source = if recipe.disciplines.contains(&config::Discipline::Achievement) {
             RecipeSource::Achievement
         } else {
             RecipeSource::Automatic

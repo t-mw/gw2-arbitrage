@@ -422,14 +422,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             disciplines: recipe
                 .disciplines
                 .iter()
-                .map(|s| {
-                    if s == "Mystic Forge" {
-                        return "My".to_string();
-                    } else if &s[..1] == "A" {
-                        // take 1st and 3rd characters to distinguish armorer/artificer
-                        format!("{}{}", &s[..1], &s[2..3])
-                    } else {
-                        s[..1].to_string()
+                .map(|d| {
+                    let s = d.to_string();
+                    match &s[..1] {
+                        // take 1st and 7th characters to distinguish Merchant/Mystic Forge
+                        "M" => format!("{}{}", &s[..1], &s[6..7]),
+                        // take 1st and 3rd characters to distinguish Scribe/Salvage and
+                        // Armorsmith/Artificer/Achievement
+                        "A" | "S" => format!("{}{}", &s[..1], &s[2..3]),
+                        // take 1st and 4th characters to distinguish Chef/Charge
+                        "C" => format!("{}{}", &s[..1], &s[3..4]),
+                        l => l.to_string(),
                     }
                 })
                 .collect::<Vec<_>>()

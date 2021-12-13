@@ -3,28 +3,15 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::{error::Error, fmt};
 use std::time::{Duration, SystemTime};
 
 use once_cell::sync::Lazy;
 use structopt::StructOpt;
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
 use toml;
+use strum::{Display, EnumString, EnumVariantNames, VariantNames};
 
 use lazy_static::lazy_static;
-
-const VALID_DISCIPLINES: &[&str] = &[
-    "Armorsmith",
-    "Artificer",
-    "Chef",
-    "Huntsman",
-    "Jeweler",
-    "Leatherworker",
-    "Scribe",
-    "Tailor",
-    "Weaponsmith",
-    "Mystic Forge",
-];
 
 pub const CACHE_PREFIX: &str = "cache_";
 
@@ -42,7 +29,7 @@ pub struct Config {
     pub crafting: CraftingOptions,
 
     pub output_csv: Option<PathBuf>,
-    pub filter_disciplines: Option<Vec<String>>,
+    pub filter_disciplines: Option<Vec<Discipline>>,
     pub lang: Option<Language>,
     pub api_key: Option<String>,
 
@@ -76,17 +63,7 @@ impl Config {
         config.lang = opt.lang;
         config.item_id = opt.item_id;
 
-        config.filter_disciplines = opt.filter_disciplines.filter(|v| !v.is_empty());
-        if let Some(filter_disciplines) = &config.filter_disciplines {
-            for discipline in filter_disciplines {
-                if !VALID_DISCIPLINES.contains(&discipline.as_str()) {
-                    panic!("Invalid discipline: {} (valid values are {})",
-                            discipline,
-                            VALID_DISCIPLINES.join(", ")
-                    );
-                }
-            }
-        };
+        config.filter_disciplines = opt.filter_disciplines;
 
 
         let file: ConfigFile = match get_file_config(&opt.config_file) {
@@ -101,7 +78,7 @@ impl Config {
 
         if let None = config.lang {
             if let Some(code) = file.lang {
-                config.lang = Language::from_code(&code).map_or_else(|e| {
+                config.lang = code.parse().map_or_else(|e| {
                     println!("Config file: {}", e);
                     None
                 }, |c| Some(c))
@@ -196,9 +173,8 @@ struct Opt {
     #[structopt(long)]
     threshold: Option<u32>,
 
-    /// Only show items craftable by this discipline or comma-separated list of disciplines (e.g. -d=Weaponsmith,Armorsmith)
-    #[structopt(short = "d", long = "disciplines", use_delimiter = true)]
-    filter_disciplines: Option<Vec<String>>,
+    #[structopt(short = "d", long = "disciplines", use_delimiter = true, help = &DISCIPLINES_HELP, parse(try_from_str = get_discipline))]
+    filter_disciplines: Option<Vec<Discipline>>,
 
     /// Download recipes and items from the GW2 API, replacing any previously cached recipes and items
     #[structopt(long)]
@@ -213,8 +189,9 @@ struct Opt {
     #[structopt(long, parse(from_os_str), help = &CONFIG_FILE_HELP)]
     config_file: Option<PathBuf>,
 
-    /// One of "en", "es", "de", "fr", or "zh". Defaults to "en"
-    #[structopt(long)]
+    /// One of "en", "es", "de", or "fr". Defaults to "en"
+    // /// One of "en", "es", "de", "fr", or "zh". Defaults to "en"
+    #[structopt(long, parse(try_from_str = get_lang))]
     lang: Option<Language>,
 }
 
@@ -248,13 +225,28 @@ The default file location is '{}'."#,
     )
 });
 
-#[derive(Debug)]
+static DISCIPLINES_HELP: Lazy<String> = Lazy::new(|| {
+    format!(r#"Only show items craftable by this discipline or comma-separated list of disciplines (e.g. -d=Weaponsmith,Armorsmith)
+
+valid values: {}"#,
+        Discipline::VARIANTS.join(", ")
+    )
+});
+
+#[derive(Debug, EnumString, EnumVariantNames)]
 pub enum Language {
+    #[strum(serialize="en")]
     English,
+    #[strum(serialize="es")]
     Spanish,
+    #[strum(serialize="de")]
     German,
+    #[strum(serialize="fr")]
     French,
-    Chinese
+    // If you read this and can help test the TP code and extract strings from the Chinese version,
+    // and would like to see this work in Chinese, please open an issue.
+    // #[strum(serialize="zh")]
+    // Chinese, // No lang client, and TP might have different data source anyway
 }
 impl Language {
     pub fn code(lang: &Option<Language>) -> Option<&str> {
@@ -264,38 +256,48 @@ impl Language {
                 Language::Spanish => Some("es"),
                 Language::German => Some("de"),
                 Language::French => Some("fr"),
-                Language::Chinese => Some("zh"),
+                //Language::Chinese => Some("zh"),
             }
         } else {
             None
         }
     }
-    pub fn from_code(code: &String) -> Result<Language, LanguageParseError> {
-        Language::from_str(code)
-    }
-}
-#[derive(Debug)]
-pub struct LanguageParseError;
-impl Error for LanguageParseError {}
-impl fmt::Display for LanguageParseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Invalid language code selected")
-    }
-}
-impl FromStr for Language {
-    type Err = LanguageParseError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "en" => Ok(Language::English),
-            "es" => Ok(Language::Spanish),
-            "de" => Ok(Language::German),
-            "fr" => Ok(Language::French),
-            "zh" => Ok(Language::Chinese),
-            _ => Err(LanguageParseError),
-        }
-    }
 }
 
+fn get_lang<Language: FromStr + VariantNames>(code: &str) -> Result<Language, Box<dyn std::error::Error>> {
+    Language::from_str(code).map_err(|_| format!(
+        "Invalid language: {} (valid values are {})", code, Language::VARIANTS.join(", ")
+    ).into())
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Display, EnumString, EnumVariantNames)]
+pub enum Discipline {
+    Artificer,
+    Armorsmith,
+    Chef,
+    Huntsman,
+    Jeweler,
+    Leatherworker,
+    Tailor,
+    Weaponsmith,
+    Scribe,
+    // A few more for compatibility with gw2efficiency
+    #[strum(serialize = "Mystic Forge")]
+    MysticForge,
+    #[strum(serialize = "Double Click")]
+    DoubleClick,
+    Salvage,
+    Merchant,
+    Charge,
+    Achievement,
+    Growing,
+}
+
+fn get_discipline<Discipline: FromStr + VariantNames>(discipline: &str) -> Result<Discipline, Box<dyn std::error::Error>> {
+    Discipline::from_str(discipline).map_err(|_| format!(
+        "Invalid discipline: {} (valid values are {})", discipline, Discipline::VARIANTS.join(", ")
+    ).into())
+}
 
 fn ensure_dir(dir: &PathBuf) -> Result<&PathBuf, Box<dyn std::error::Error>> {
     if !dir.exists() {

@@ -3,6 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use phf::{phf_set, phf_map};
+use strum::Display;
+
+use crate::config;
+use config::CONFIG;
 
 const TRADING_POST_SALES_COMMISSION: i32 = 15; // %
 
@@ -35,24 +39,30 @@ pub struct PriceInfo {
 }
 
 // types for /recipes
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Recipe {
     pub id: u32,
     pub output_item_id: u32,
     pub output_item_count: i32,
     time_to_craft_ms: i32,
-    pub disciplines: Vec<String>,
+    pub disciplines: Vec<config::Discipline>,
     min_rating: i32,
-    flags: Vec<String>,
+    flags: Vec<RecipeFlags>,
     pub ingredients: Vec<RecipeIngredient>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub enum RecipeFlags {
+    AutoLearned,
+    LearnedFromItem,
 }
 
 impl Recipe {
     pub fn is_purchased(&self) -> bool {
-        self.flags.contains(&"LearnedFromItem".to_string())
+        self.flags.contains(&RecipeFlags::LearnedFromItem)
     }
     pub fn is_automatic(&self) -> bool {
-        self.flags.contains(&"AutoLearned".to_string())
+        self.flags.contains(&RecipeFlags::AutoLearned)
     }
 }
 
@@ -98,7 +108,7 @@ pub enum ItemType {
     Weapon,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Display)]
 pub enum ItemRarity {
     Junk,
     Basic,
@@ -109,19 +119,38 @@ pub enum ItemRarity {
     Ascended,
     Legendary,
 }
-// TODO: Localize
-impl fmt::Display for ItemRarity {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match &self {
-            ItemRarity::Junk => "Junk",
-            ItemRarity::Basic => "Basic",
-            ItemRarity::Fine => "Fine",
-            ItemRarity::Masterwork => "Masterwork",
-            ItemRarity::Rare => "Rare",
-            ItemRarity::Exotic => "Exotic",
-            ItemRarity::Ascended => "Ascended",
-            ItemRarity::Legendary => "Legendary",
-        })
+
+impl ItemRarity {
+    fn crafted_localized(&self) -> String {
+        let lang = CONFIG.lang.as_ref().unwrap_or(&config::Language::English);
+        // NOTE: these strings were extracted by hand from client crafting interface
+        match lang {
+            config::Language::English => match &self {
+                ItemRarity::Masterwork => "Master".to_string(),
+                _ => self.to_string(),
+            },
+            config::Language::Spanish => match &self {
+                ItemRarity::Masterwork => "maestro".to_string(),
+                ItemRarity::Rare => "excepcional".to_string(),
+                ItemRarity::Exotic => "exótico".to_string(),
+                ItemRarity::Ascended => "Ascendido".to_string(),
+                _ => self.to_string(),
+            },
+            config::Language::German => match &self {
+                ItemRarity::Masterwork => "Meister".to_string(),
+                ItemRarity::Rare => "Selten".to_string(),
+                ItemRarity::Exotic => "Exotisch".to_string(),
+                ItemRarity::Ascended => "Aufgestiegen".to_string(),
+                _ => self.to_string(),
+            },
+            config::Language::French => match &self {
+                ItemRarity::Masterwork => "Maître".to_string(),
+                // Rare is the same in French
+                ItemRarity::Exotic => "Exotique".to_string(),
+                ItemRarity::Ascended => "Elevé".to_string(),
+                _ => self.to_string(),
+            },
+        }
     }
 }
 
@@ -218,7 +247,7 @@ impl Item {
 impl fmt::Display for Item {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let ItemType::Trinket = &self.item_type {
-            write!(f, "{} ({})", &self.name, &self.rarity)
+            write!(f, "{} ({})", &self.name, &self.rarity.crafted_localized())
         } else {
             write!(f, "{}", &self.name)
         }
