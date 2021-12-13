@@ -7,13 +7,36 @@ use crate::config;
 
 use std::fs::File;
 use std::path::Path;
+use std::str::FromStr;
 
 use bincode::{deserialize_from, serialize_into};
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
+use phf::phf_set;
 
-use std::str::FromStr;
+static RECIPE_BLACKLIST_IDS: phf::Set<u32> = phf_set! {
+    // Non-integer output, probabalistic:
+    19675_u32, // Mystic Clover
+    38131_u32, // Delicate Snowflake
+    38132_u32, // Glittering Snowflake
+    38133_u32, // Unique Snowflake
+    38134_u32, // Pristine Snowflake
+    38135_u32, // Flawless Snowflake
+
+    // Integer output is wrong, probabalistic:
+    38121_u32, // Endless Gift Dolyak Tonic; 1/3 chance
+    28115_u32, // Endless Toymaker's Tonic; 1/3 chance
+    45008_u32, // Mini Steamrider; 1/3 chance
+    45009_u32, // Mini Steam Hulk; 1/3 chance
+    45010_u32, // Mini Steam Minotaur; 1/3 chance
+
+    // Unclear if the halloween ingredients are random; but will probably never
+    // be worth converting anyway, so leaving them off
+
+    // Leaving in; at least lists the minimum accurately.
+    // 68063_u32, // Amalgamated Gemstone; 10% chance of 25 from the 10 recipe, etc.
+};
 
 #[derive(Debug, Deserialize)]
 pub struct Recipe {
@@ -48,6 +71,8 @@ pub async fn fetch_custom_recipes(
 
         let recipes: Vec<crafting::Recipe> = custom_recipes
             .into_iter()
+            // Remove blacklisted recipes here to avoid printing errors for non-integers
+            .filter(|r| !RECIPE_BLACKLIST_IDS.contains(&r.output_item_id))
             .map(std::convert::TryFrom::try_from)
             .filter_map(|result: Result<crafting::Recipe, _>| match result {
                 Ok(recipe) => Some(recipe),
