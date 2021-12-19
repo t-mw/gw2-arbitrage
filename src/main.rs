@@ -1,8 +1,6 @@
 use colored::Colorize;
-use num_rational::Rational32;
-use num_traits::ToPrimitive;
 use rayon::prelude::*;
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -12,12 +10,13 @@ mod config;
 mod crafting;
 mod gw2efficiency;
 mod request;
+mod money;
 #[cfg(test)]
 mod tests;
 
 use config::CONFIG;
 
-const ITEM_STACK_SIZE: i32 = 250; // GW2 uses a "stack size" of 250
+const ITEM_STACK_SIZE: u32 = 250; // GW2 uses a "stack size" of 250
 
 #[derive(Debug, Serialize)]
 struct OutputRow {
@@ -25,21 +24,12 @@ struct OutputRow {
     disciplines: String,
     item_id: u32,
     unknown_recipes: Vec<u32>,
-    total_profit: i32,
-    number_required: i32,
-    profit_per_item: i32,
-    crafting_steps: i32,
-    profit_per_step: i32,
-    #[serde(serialize_with = "serialize_rational32_to_f64")]
-    profit_on_cost: Rational32,
-}
-
-fn serialize_rational32_to_f64<S>(value: &Rational32, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    const PRECISION: f64 = 1000.0;
-    serializer.serialize_f64((PRECISION * value.to_f64().unwrap_or(0.0)).round() / PRECISION)
+    total_profit: String,
+    number_required: u32,
+    profit_per_item: u32,
+    crafting_steps: u32,
+    profit_per_step: u32,
+    profit_on_cost: f64,
 }
 
 #[tokio::main]
@@ -159,26 +149,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Shopping list for {} x {} = {} profit ({} / step, {}%)",
             profitable_item.count,
             &item,
-            copper_to_string(profitable_item.profit.to_integer()),
-            profitable_item.profit_per_crafting_step().to_integer(),
-            (profitable_item.profit_on_cost() * 100)
-                .round()
-                .to_integer(),
+            profitable_item.profit,
+            profitable_item.profit_per_crafting_step().to_copper_value(),
+            (profitable_item.profit_on_cost() * 100_f64)
+                .round(),
         );
         let price_msg = if profitable_item.max_sell == profitable_item.min_sell {
-            format!("{}", copper_to_string(profitable_item.min_sell))
+            format!("{}", profitable_item.min_sell)
         } else {
             format!(
                 "{} to {}",
-                copper_to_string(profitable_item.max_sell),
-                copper_to_string(profitable_item.min_sell),
+                profitable_item.max_sell,
+                profitable_item.min_sell,
             )
         };
         println!(
-            "Sell at: {}, Crafting cost: {}, Breakeven price: {}",
+            "Sell at: {}, Money Required: {}, Breakeven price: {}",
             price_msg,
-            copper_to_string(profitable_item.crafting_cost.to_integer()),
-            copper_to_string(profitable_item.breakeven),
+            profitable_item.crafting_cost.include_trading_post_listing_fee(),
+            profitable_item.breakeven,
         );
 
         println!("============");
@@ -203,11 +192,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
         let mut inventory = 0;
         for ((ingredient_id, ingredient_source), ingredient) in sorted_ingredients {
-            let ingredient_count = ingredient.count.ceil().to_integer();
-            let ingredient_count_msg = if ingredient_count > ITEM_STACK_SIZE {
-                let stack_count = ingredient_count / ITEM_STACK_SIZE;
+            let ingredient_count_msg = if ingredient.count > ITEM_STACK_SIZE {
+                let stack_count = ingredient.count / ITEM_STACK_SIZE;
                 inventory += stack_count;
-                let remainder = ingredient_count % ITEM_STACK_SIZE;
+                let remainder = ingredient.count % ITEM_STACK_SIZE;
                 let remainder_msg = if remainder != 0 {
                     inventory += 1;
                     format!(" + {}", remainder)
@@ -216,26 +204,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
                 format!(
                     "{} ({} x {}{})",
-                    ingredient_count, stack_count, ITEM_STACK_SIZE, remainder_msg
+                    ingredient.count, stack_count, ITEM_STACK_SIZE, remainder_msg
                 )
             } else {
                 inventory += 1;
-                ingredient_count.to_string()
+                ingredient.count.to_string()
             };
             let source_msg = match *ingredient_source {
                 crafting::Source::TradingPost => {
                     if ingredient.max_price == ingredient.min_price {
                         format!(
                             " (at {}) Subtotal: {}",
-                            copper_to_string(ingredient.min_price),
-                            copper_to_string(ingredient.total_cost.to_integer()),
+                            ingredient.min_price,
+                            ingredient.total_cost,
                         )
                     } else {
                         format!(
                             " (at {} to {}) Subtotal: {}",
-                            copper_to_string(ingredient.min_price),
-                            copper_to_string(ingredient.max_price),
-                            copper_to_string(ingredient.total_cost.to_integer()),
+                            ingredient.min_price,
+                            ingredient.max_price,
+                            ingredient.total_cost,
                         )
                     }
                 }
@@ -247,8 +235,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(cost) = vendor_cost {
                         format!(
                             " (vendor: {}) Subtotal: {}",
-                            copper_to_string(cost),
-                            copper_to_string(cost * ingredient_count),
+                            cost,
+                            cost * ingredient.count,
                         )
                     } else {
                         "".to_string()
@@ -366,7 +354,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &tp_prices_map,
             &CONFIG.crafting,
         ) {
-            if tp_prices.effective_buy_price() > crafting_cost {
+            let effective_buy_price = money::Money::from_copper(tp_prices.buys.unit_price)
+                .trading_post_sale_revenue();
+            if effective_buy_price > crafting_cost {
                 profitable_item_ids.push(*item_id);
                 collect_ingredient_ids(*item_id, &recipes_map, &mut ingredient_ids);
             }
@@ -489,11 +479,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .iter()
                 .map(|&id| id)
                 .collect(),
-            total_profit: profitable_item.profit.to_integer(),
+            total_profit: profitable_item.profit.to_string(),
             number_required: profitable_item.count,
-            profit_per_item: profitable_item.profit_per_item().to_integer(),
-            crafting_steps: profitable_item.crafting_steps.ceil().to_integer(),
-            profit_per_step: profitable_item.profit_per_crafting_step().to_integer(),
+            profit_per_item: profitable_item.profit_per_item().to_copper_value(),
+            crafting_steps: profitable_item.crafting_steps,
+            profit_per_step: profitable_item.profit_per_crafting_step().to_copper_value(),
             profit_on_cost: profitable_item.profit_on_cost(),
         };
 
@@ -515,7 +505,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .collect::<Vec<String>>()
                     .join(",")
             ),
-            copper_to_string(output_row.total_profit),
+            output_row.total_profit,
             format!(
                 "{} item{}",
                 output_row.number_required,
@@ -528,10 +518,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             format!("{} / item", output_row.profit_per_item),
             format!("{} steps", output_row.crafting_steps),
             format!("{} / step", output_row.profit_per_step),
-            format!(
-                "{}%",
-                (output_row.profit_on_cost * 100).round().to_integer()
-            )
+            format!("{}%", (output_row.profit_on_cost * 100_f64).round())
         );
 
         println!("{}", line.color(*line_colors.next().unwrap()));
@@ -541,8 +528,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", header);
     println!("{}", "=".repeat(header.len()));
 
-    let total_profit: Rational32 = profitable_items.iter().map(|item| item.profit).sum();
-    println!("Total: {}", copper_to_string(total_profit.to_integer()));
+    let total_profit: money::Money = profitable_items.iter().map(|item| item.profit).sum();
+    println!("Total: {}", total_profit);
 
     if let Some(writer) = &mut csv_writer {
         writer.flush()?;
@@ -623,11 +610,4 @@ fn collect_ingredient_ids(
             collect_ingredient_ids(ingredient.item_id, recipes_map, ids);
         }
     }
-}
-
-fn copper_to_string(copper: i32) -> String {
-    let gold = copper / 10000;
-    let silver = (copper - gold * 10000) / 100;
-    let copper = copper - gold * 10000 - silver * 100;
-    format!("{}.{:02}.{:02}g", gold, silver, copper)
 }
