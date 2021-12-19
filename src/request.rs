@@ -39,7 +39,7 @@ pub async fn fetch_item_listings(
 }
 
 pub async fn ensure_paginated_cache<T>(
-    cache_path: impl AsRef<Path>,
+    data_path: impl AsRef<Path>,
     url_path: &str,
     lang: &Option<config::Language>,
 ) -> Result<Vec<T>, Box<dyn std::error::Error>>
@@ -47,13 +47,13 @@ where
     T: serde::Serialize,
     T: serde::de::DeserializeOwned,
 {
-    if let Ok(file) = File::open(&cache_path) {
+    if let Ok(file) = File::open(&data_path) {
         let stream = DeflateDecoder::new(file);
         deserialize_from(stream).map_err(|e| {
             format!(
                 "Failed to deserialize existing cache at '{}' ({}). \
-                 Try using the --reset-cache flag to replace the cache file.",
-                cache_path.as_ref().display(),
+                 Try using the --reset-data flag to replace the data files.",
+                data_path.as_ref().display(),
                 e,
             )
             .into()
@@ -61,7 +61,7 @@ where
     } else {
         let items = request_paginated(url_path, lang).await?;
 
-        let file = File::create(cache_path)?;
+        let file = File::create(data_path)?;
         let stream = DeflateEncoder::new(file, Compression::default());
         serialize_into(stream, &items)?;
 
