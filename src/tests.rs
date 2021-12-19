@@ -2,9 +2,8 @@ use crate::{
     api::{self, Item, ItemListings, Listing, RecipeIngredient},
     config::Discipline,
     crafting::{self, PurchasedIngredient, Recipe, RecipeSource},
+    money::Money,
 };
-
-use num_rational::Rational32;
 
 use std::collections::{HashMap, HashSet};
 
@@ -108,30 +107,30 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
         purchased_ingredients,
         vec![
             (
-                (46747u32, crafting::Source::TradingPost),
+                (thermocatalytic_reagent_item_id, crafting::Source::TradingPost),
                 PurchasedIngredient {
-                    count: 2.into(),
-                    max_price: 178,
-                    min_price: 120,
-                    total_cost: 298.into()
+                    count: 2,
+                    min_price: Money::from_copper(120),
+                    max_price: Money::from_copper(178),
+                    total_cost: Money::from_copper(298),
                 }
             ),
             (
-                (46747u32, crafting::Source::Vendor),
+                (thermocatalytic_reagent_item_id, crafting::Source::Vendor),
                 PurchasedIngredient {
-                    count: 4.into(),
-                    max_price: 0,
-                    min_price: 0,
-                    total_cost: 0.into()
+                    count: 4,
+                    min_price: Money::from_copper(0),
+                    max_price: Money::from_copper(0),
+                    total_cost: Money::from_copper(0),
                 }
             ),
             (
-                (49437u32, crafting::Source::TradingPost),
+                (plus_14_item_id, crafting::Source::TradingPost),
                 PurchasedIngredient {
-                    count: 8.into(),
-                    max_price: 1100000,
-                    min_price: 800000,
-                    total_cost: 8300000.into()
+                    count: 8,
+                    min_price: Money::from_copper(800000),
+                    max_price: Money::from_copper(1100000),
+                    total_cost: Money::from_copper(8300000),
                 }
             ),
         ]
@@ -141,20 +140,21 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
     // and the average cost for two items is lower than from the vendor.
     // ideally only one reagent would be purchased from the tp, but that would introduce complexity.
     let thermocatalytic_reagent_crafting_cost = (120 + 178) + 4 * 150;
-    let crafting_cost = 800000 + 2 * 1000000 + 5 * 1100000 + thermocatalytic_reagent_crafting_cost;
+    let crafting_cost = Money::from_copper(800000 + 2 * 1000000 + 5 * 1100000 + thermocatalytic_reagent_crafting_cost);
     assert_eq!(
         profitable_item,
         Some(crafting::ProfitableItem {
             id: plus_16_item_id,
-            crafting_cost: crafting_cost.into(),
-            crafting_steps: 6.into(),
-            count: 2.into(),
-            profit: api::subtract_trading_post_sales_commission(7982220 + 7982200)
-                - Rational32::from(crafting_cost),
+            crafting_cost,
+            crafting_steps: 6,
+            count: 2,
+            profit: Money::from_copper(7982220 + 7982200).trading_post_sale_revenue()
+                - crafting_cost,
             unknown_recipes: Default::default(),
-            max_sell: 7982220,
-            min_sell: 7982200,
-            breakeven: 5177000
+            max_sell: Money::from_copper(7982220),
+            min_sell: Money::from_copper(7982200),
+            // (1100000 * 4 + 3 * 150) / (85 / 100)
+            breakeven: Money::from_copper(5177000),
         })
     );
 }
@@ -218,19 +218,21 @@ fn calculate_crafting_profit_with_output_item_count_test() {
         None,
         &Default::default(),
     );
+    let crafting_cost = Money::from_copper(43 + 90 + 92);
     assert_eq!(
         profitable_item,
         Some(crafting::ProfitableItem {
             id: item_id,
-            crafting_cost: (43 + 90 + 92).into(),
-            crafting_steps: 1.into(),
-            count: 98.into(),
-            profit: api::subtract_trading_post_sales_commission(200 + 199 * 50 + 198 * 47)
-                - Rational32::from(43 + 90 + 92),
+            crafting_cost,
+            crafting_steps: 1,
+            count: 98,
+            profit: Money::from_copper(200 + 199 * 50 + 198 * 47).trading_post_sale_revenue()
+                - crafting_cost,
             unknown_recipes: Default::default(),
-            max_sell: 200,
-            min_sell: 198,
-            breakeven: 2
+            max_sell: Money::from_copper(200),
+            min_sell: Money::from_copper(198),
+            // ((43 + 90 + 92) / 98) / (85/100)
+            breakeven: Money::from_copper(3),
         })
     );
 
@@ -244,20 +246,21 @@ fn calculate_crafting_profit_with_output_item_count_test() {
         None,
         &Default::default(),
     );
-    let crafting_cost = 43 + 45 * 31 + 90 + 92 * 33 + 94 * 30;
+    let crafting_cost = Money::from_copper(43 + 45 * 31 + 90 + 92 * 33 + 94 * 30);
     assert_eq!(
         profitable_item,
         Some(crafting::ProfitableItem {
             id: item_id,
-            crafting_cost: crafting_cost.into(),
-            crafting_steps: 32.into(),
-            count: 96.into(),
-            profit: api::subtract_trading_post_sales_commission(200 + 199 * 50 + 198 * 45)
-                - Rational32::from(crafting_cost),
+            crafting_cost,
+            crafting_steps: 32,
+            count: 96,
+            profit: Money::from_copper(200 + 199 * 50 + 198 * 45).trading_post_sale_revenue()
+                - crafting_cost,
             unknown_recipes: Default::default(),
-            max_sell: 200,
-            min_sell: 198,
-            breakeven: 91
+            max_sell: Money::from_copper(200),
+            min_sell: Money::from_copper(198),
+            // ((2*94 + 45) / 3) / (85/100)
+            breakeven: Money::from_copper(92),
         })
     );
 }
@@ -424,7 +427,7 @@ fn calculate_crafting_profit_unknown_recipe_test() {
 }
 
 fn tp_listings_map(
-    from: Vec<(u32, Vec<(i32, i32)>, Vec<(i32, i32)>)>,
+    from: Vec<(u32, Vec<(u32, u32)>, Vec<(u32, u32)>)>,
 ) -> HashMap<u32, ItemListings> {
     let mut map = HashMap::new();
     for (id, mut buys, mut sells) in from.into_iter() {

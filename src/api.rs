@@ -1,4 +1,3 @@
-use num_rational::Rational32;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use std::fmt;
 
@@ -7,15 +6,8 @@ use strum::Display;
 
 use crate::config;
 use config::CONFIG;
+use crate::money;
 
-const TRADING_POST_SALES_COMMISSION: i32 = 15; // %
-
-pub fn subtract_trading_post_sales_commission(v: i32) -> Rational32 {
-    Rational32::new(100 - TRADING_POST_SALES_COMMISSION, 100) * v
-}
-pub fn add_trading_post_sales_commission(v: Rational32) -> i32 {
-    (v / Rational32::new(100 - TRADING_POST_SALES_COMMISSION, 100)).to_integer()
-}
 
 // types for /commerce/prices
 #[derive(Debug, Serialize, Deserialize)]
@@ -25,17 +17,10 @@ pub struct Price {
     pub sells: PriceInfo,
 }
 
-impl Price {
-    pub fn effective_buy_price(&self) -> i32 {
-        (self.buys.unit_price as f32 * (1.0 - TRADING_POST_SALES_COMMISSION as f32 / 100.0)).floor()
-            as i32
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PriceInfo {
-    pub unit_price: i32,
-    pub quantity: i32,
+    pub unit_price: u32,
+    pub quantity: u32,
 }
 
 // types for /recipes
@@ -43,10 +28,10 @@ pub struct PriceInfo {
 pub struct Recipe {
     pub id: u32,
     pub output_item_id: u32,
-    pub output_item_count: i32,
-    time_to_craft_ms: i32,
+    pub output_item_count: u32,
+    time_to_craft_ms: u32,
     pub disciplines: Vec<config::Discipline>,
-    min_rating: i32,
+    min_rating: u16,
     flags: Vec<RecipeFlags>,
     pub ingredients: Vec<RecipeIngredient>,
 }
@@ -69,7 +54,7 @@ impl Recipe {
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct RecipeIngredient {
     pub item_id: u32,
-    pub count: i32,
+    pub count: u32,
 }
 
 // types for /items
@@ -81,7 +66,7 @@ pub struct Item {
     item_type: ItemType,
     rarity: ItemRarity,
     level: i32,
-    vendor_value: i32,
+    vendor_value: u32,
     flags: Vec<ItemFlag>,
     restrictions: Vec<String>,
     upgrades_into: Option<Vec<ItemUpgrade>>,
@@ -106,7 +91,7 @@ impl<'de> Deserialize<'de> for ApiItem {
             item_type: ItemType,
             rarity: ItemRarity,
             level: i32,
-            vendor_value: i32,
+            vendor_value: u32,
             flags: Vec<ItemFlag>,
             restrictions: Vec<String>,
             upgrades_into: Option<Vec<ItemUpgrade>>,
@@ -312,24 +297,24 @@ static VENDOR_ITEMS: phf::Set<u32> = phf_set! {
     75087_u32, // Essence of Elegance - buy one at a time
 };
 // Sell price is _not_ buy price * 8
-static SPECIAL_VENDOR_ITEMS: phf::Map<u32, i32> = phf_map! {
+static VENDOR_ITEMS_CUSTOM_PRICE: phf::Map<u32, u32> = phf_map! {
     46747_u32 => 150, // Thermocatalytic Reagent - 1496 for 10
     91739_u32 => 150, // Pile of Compost Starter - 1496 for 10
     91702_u32 => 200, // Pile of Powdered Gelatin Mix - 5 for 1000; prereq achievement
     90201_u32 => 40000, // Smell-Enhancing Culture; prereq achievement
 };
 impl Item {
-    pub fn vendor_cost(&self) -> Option<i32> {
+    pub fn vendor_cost(&self) -> Option<money::Money> {
         if VENDOR_ITEMS.contains(&self.id) {
             if self.vendor_value > 0 {
                 // standard vendor sell price is generally buy price * 8, see:
                 //  https://forum-en.gw2archive.eu/forum/community/api/How-to-get-the-vendor-sell-price
-                Some(self.vendor_value * 8)
+                Some(money::Money::from_copper(self.vendor_value * 8))
             } else {
                 None
             }
-        } else if SPECIAL_VENDOR_ITEMS.contains_key(&self.id) {
-            Some(SPECIAL_VENDOR_ITEMS[&self.id])
+        } else if VENDOR_ITEMS_CUSTOM_PRICE.contains_key(&self.id) {
+            Some(money::Money::from_copper(VENDOR_ITEMS_CUSTOM_PRICE[&self.id]))
         } else {
             None
         }
@@ -369,7 +354,7 @@ impl Item {
     }
 
     #[cfg(test)]
-    pub(crate) fn mock(id: u32, name: &str, vendor_value: i32) -> Self {
+    pub(crate) fn mock(id: u32, name: &str, vendor_value: u32) -> Self {
         Item {
             id,
             name: name.to_string(),
@@ -414,7 +399,7 @@ pub struct ItemListings {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Listing {
-    pub listings: i32,
-    pub unit_price: i32,
-    pub quantity: i32,
+    pub listings: u32,
+    pub unit_price: u32,
+    pub quantity: u32,
 }

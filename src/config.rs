@@ -19,9 +19,9 @@ pub const CACHE_PREFIX: &str = "cache_";
 pub struct CraftingOptions {
     pub include_timegated: bool,
     pub include_ascended: bool,
-    pub count: Option<i32>,
+    pub count: Option<u32>,
     pub threshold: Option<u32>,
-    pub value: Option<i32>,
+    pub value: Option<u32>,
 }
 
 #[derive(Default)]
@@ -174,11 +174,11 @@ struct Opt {
 
     /// Limit the maximum number of items produced for a recipe
     #[structopt(short, long)]
-    count: Option<i32>,
+    count: Option<u32>,
 
     /// Calculate profit based on a fixed value instead of from buy orders
     #[structopt(long)]
-    value: Option<i32>,
+    value: Option<u32>,
 
     /// Threshold - min profit per item in copper
     #[structopt(long)]

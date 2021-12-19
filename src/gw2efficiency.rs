@@ -58,7 +58,7 @@ pub struct Recipe {
     pub name: String, // used only in error output
     pub output_item_id: u32,
     #[serde(deserialize_with = "treat_error_as_none")]
-    pub output_item_count: Option<i32>,
+    pub output_item_count: Option<u32>,
     #[serde(deserialize_with = "strum_discipline")]
     pub disciplines: Vec<config::Discipline>,
     pub ingredients: Vec<api::RecipeIngredient>,
