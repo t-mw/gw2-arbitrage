@@ -82,7 +82,7 @@ pub struct Item {
     rarity: ItemRarity,
     level: i32,
     vendor_value: i32,
-    flags: Vec<String>,
+    flags: Vec<ItemFlag>,
     restrictions: Vec<String>,
     upgrades_into: Option<Vec<ItemUpgrade>>,
     upgrades_from: Option<Vec<ItemUpgrade>>,
@@ -154,6 +154,28 @@ impl ItemRarity {
     }
 }
 
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub enum ItemFlag {
+    AccountBindOnUse,
+    AccountBound,
+    Attuned,
+    BulkConsume,
+    DeleteWarning,
+    HideSuffix,
+    Infused,
+    MonsterOnly,
+    NoMysticForge,
+    NoSalvage,
+    NoSell,
+    NotUpgradeable,
+    NoUnderwater,
+    SoulbindOnAcquire,
+    SoulBindOnUse,
+    Tonic,
+    Unique,
+}
+
 // NOTE: most can only be purchased in blocks of 10 - we ignore that for now
 // NOTE: doesn't include karma purchases, since the karma to gold rate is undefined and we don't
 // support multiple currencies
@@ -216,7 +238,7 @@ impl Item {
             || self
                 .flags
                 .iter()
-                .any(|flag| *flag == "AccountBound" || *flag == "SoulbindOnAcquire")
+                .any(|flag| *flag == ItemFlag::AccountBound || *flag == ItemFlag::SoulbindOnAcquire)
     }
 
     pub fn is_common_ascended_material(&self) -> bool {
