@@ -126,28 +126,28 @@ impl ItemRarity {
         // NOTE: these strings were extracted by hand from client crafting interface
         match lang {
             config::Language::English => match &self {
-                ItemRarity::Masterwork => "Master".to_string(),
+                Self::Masterwork => "Master".to_string(),
                 _ => self.to_string(),
             },
             config::Language::Spanish => match &self {
-                ItemRarity::Masterwork => "maestro".to_string(),
-                ItemRarity::Rare => "excepcional".to_string(),
-                ItemRarity::Exotic => "exótico".to_string(),
-                ItemRarity::Ascended => "Ascendido".to_string(),
+                Self::Masterwork => "maestro".to_string(),
+                Self::Rare => "excepcional".to_string(),
+                Self::Exotic => "exótico".to_string(),
+                Self::Ascended => "Ascendido".to_string(),
                 _ => self.to_string(),
             },
             config::Language::German => match &self {
-                ItemRarity::Masterwork => "Meister".to_string(),
-                ItemRarity::Rare => "Selten".to_string(),
-                ItemRarity::Exotic => "Exotisch".to_string(),
-                ItemRarity::Ascended => "Aufgestiegen".to_string(),
+                Self::Masterwork => "Meister".to_string(),
+                Self::Rare => "Selten".to_string(),
+                Self::Exotic => "Exotisch".to_string(),
+                Self::Ascended => "Aufgestiegen".to_string(),
                 _ => self.to_string(),
             },
             config::Language::French => match &self {
-                ItemRarity::Masterwork => "Maître".to_string(),
+                Self::Masterwork => "Maître".to_string(),
                 // Rare is the same in French
-                ItemRarity::Exotic => "Exotique".to_string(),
-                ItemRarity::Ascended => "Elevé".to_string(),
+                Self::Exotic => "Exotique".to_string(),
+                Self::Ascended => "Elevé".to_string(),
                 _ => self.to_string(),
             },
         }
