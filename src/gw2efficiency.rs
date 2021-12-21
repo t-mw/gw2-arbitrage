@@ -15,7 +15,8 @@ use flate2::write::DeflateEncoder;
 use flate2::Compression;
 use phf::phf_set;
 
-static RECIPE_BLACKLIST_IDS: phf::Set<u32> = phf_set! {
+// Bad recipes; blacklist based on item ID
+static BLACKLIST_ITEM_IDS: phf::Set<u32> = phf_set! {
     // Non-integer output, probabalistic:
     19675_u32, // Mystic Clover
     38131_u32, // Delicate Snowflake
@@ -36,6 +37,26 @@ static RECIPE_BLACKLIST_IDS: phf::Set<u32> = phf_set! {
 
     // Leaving in; at least lists the minimum accurately.
     // 68063_u32, // Amalgamated Gemstone; 10% chance of 25 from the 10 recipe, etc.
+
+    // Vendor purchases using items _and currency_; currency is ignored.
+    // I think most aren't a problem as outputs typically cannot be sold
+    24_u32, // Sealed Package of Snowballs; 1 Snowflake, yes, but +7k karma
+    // Swim Speed Infusions: +448 copper per level per conversion (fewer conversions is better)
+    87518_u32, // Swim-Speed Infusion +11
+    87493_u32, // Swim-Speed Infusion +12
+    87503_u32, // Swim-Speed Infusion +13
+    87526_u32, // Swim-Speed Infusion +14
+    87496_u32, // Swim-Speed Infusion +15
+    87497_u32, // Swim-Speed Infusion +16
+    87508_u32, // Swim-Speed Infusion +17
+    87516_u32, // Swim-Speed Infusion +18
+    87532_u32, // Swim-Speed Infusion +19
+    87495_u32, // Swim-Speed Infusion +20
+    87525_u32, // Swim-Speed Infusion +21
+    87511_u32, // Swim-Speed Infusion +22
+    87512_u32, // Swim-Speed Infusion +23
+    87527_u32, // Swim-Speed Infusion +24
+    87502_u32, // Swim-Speed Infusion +25
 };
 
 #[derive(Debug, Deserialize)]
@@ -72,7 +93,7 @@ pub async fn fetch_custom_recipes(
         let recipes: Vec<crafting::Recipe> = custom_recipes
             .into_iter()
             // Remove blacklisted recipes here to avoid printing errors for non-integers
-            .filter(|r| !RECIPE_BLACKLIST_IDS.contains(&r.output_item_id))
+            .filter(|r| !BLACKLIST_ITEM_IDS.contains(&r.output_item_id))
             .map(std::convert::TryFrom::try_from)
             .filter_map(|result: Result<crafting::Recipe, _>| match result {
                 Ok(recipe) => Some(recipe),
