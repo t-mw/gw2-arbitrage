@@ -56,8 +56,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Loading recipes");
     let api_recipes = {
-        let mut api_recipes: Vec<api::Recipe> = request::ensure_paginated_cache(
-            &CONFIG.api_recipes_file, "recipes", &None,
+        let mut api_recipes: Vec<api::Recipe> = request::get_data(
+            &CONFIG.api_recipes_file, || request::request_paginated("recipes", &None)
         ).await?;
         // If a recipe has no disciplines it cannot be crafted or discovered.
         // This appears to be used to mark deprecated recipes in the API.
@@ -71,7 +71,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("Loading custom recipes");
-    let custom_recipes: Vec<crafting::Recipe> = gw2efficiency::fetch_custom_recipes(&CONFIG.custom_recipes_file)
+    let custom_recipes: Vec<crafting::Recipe> = request::get_data(
+        &CONFIG.custom_recipes_file, gw2efficiency::fetch_custom_recipes
+    )
         .await
         .unwrap_or_else(|e| {
             eprintln!("Failed to fetch custom recipes: {}", e);
@@ -84,7 +86,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("Loading items");
-    let items: Vec<api::Item> = request::ensure_paginated_cache(&CONFIG.items_file, "items", &CONFIG.lang).await?;
+    let items: Vec<api::Item> = request::get_data(
+        &CONFIG.items_file, || async {
+            let api_items: Vec<api::ApiItem> = request::request_paginated("items", &CONFIG.lang).await?;
+            Ok(api_items.into_iter().map(|api_item| api::Item::from(api_item)).collect())
+        }
+    ).await?;
     println!(
         "Loaded {} items stored at '{}'",
         items.len(),
@@ -253,17 +260,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let unknown_recipes: Vec<u32> = profitable_item.unknown_recipes.iter().map(|&id| id).collect();
         if unknown_recipes.len() > 0 {
+            let req_recipes = unknown_recipes.iter().map(|id| {
+                let recipe_names = items_map.iter()
+                    .filter(|(_, item)| {
+                        if let Some(unlocks) = &item.recipe_unlocks() {
+                            unlocks.iter().filter(|&recipe_id| id == recipe_id).count() > 0
+                        } else {
+                            false
+                        }
+                    })
+                    .map(|(_, item)| format!("{}", &item.name))
+                    .collect::<Vec<String>>()
+                    .join(" or ");
+                if recipe_names.len() > 0 {
+                    recipe_names
+                } else {
+                    // recipe 5424 for item 29407 has no unlock item, possibly others
+                    format!("Recipe {} is not available!", &id)
+                }
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
             println!(
-                "You {} craft this yet. Required recipe id{}: {}",
+                "You {} craft this yet. Required recipes{}:\n{}",
                 match known_recipes {
                     Some(_) => "can not",
                     None => "may not be able to",
                 },
                 if unknown_recipes.len() > 1 { "s" } else { "" },
-                unknown_recipes.iter()
-                    .map(|id| id.to_string())
-                    .collect::<Vec<String>>()
-                    .join(", ")
+                req_recipes,
             );
         }
 
