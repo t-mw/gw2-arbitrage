@@ -1,5 +1,5 @@
 use num_rational::Rational32;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Deserializer, de};
 use std::fmt;
 
 use phf::{phf_set, phf_map};
@@ -86,6 +86,76 @@ pub struct Item {
     restrictions: Vec<String>,
     upgrades_into: Option<Vec<ItemUpgrade>>,
     upgrades_from: Option<Vec<ItemUpgrade>>,
+    details: Option<ItemDetails>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(transparent)]
+pub struct ApiItem(Item);
+
+impl<'de> Deserialize<'de> for ApiItem {
+    fn deserialize<D>(d: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Debug, Deserialize)]
+        struct ItemDeser {
+            pub id: u32,
+            pub name: String,
+            #[serde(rename = "type")]
+            item_type: ItemType,
+            rarity: ItemRarity,
+            level: i32,
+            vendor_value: i32,
+            flags: Vec<ItemFlag>,
+            restrictions: Vec<String>,
+            upgrades_into: Option<Vec<ItemUpgrade>>,
+            upgrades_from: Option<Vec<ItemUpgrade>>,
+            #[serde(default)]
+            details: Option<serde_json::Value>,
+        }
+
+        let item = ItemDeser::deserialize(d)?;
+        let details = match (&item.item_type, item.details) {
+            (ItemType::Consumable, Some(details)) => Some(
+                ItemDetails::Consumable(serde_json::from_value(details)
+                .map_err(de::Error::custom)?
+            )),
+            _ => None,
+        };
+
+        Ok(ApiItem(Item {
+            id: item.id,
+            name: item.name,
+            item_type: item.item_type,
+            rarity: item.rarity,
+            level: item.level,
+            vendor_value: item.vendor_value,
+            flags: item.flags,
+            restrictions: item.restrictions,
+            upgrades_into: item.upgrades_into,
+            upgrades_from: item.upgrades_from,
+            details,
+        }))
+    }
+}
+
+impl From<ApiItem> for Item {
+    fn from(item: ApiItem) -> Self {
+        Item {
+            id: item.0.id,
+            name: item.0.name,
+            item_type: item.0.item_type,
+            rarity: item.0.rarity,
+            level: item.0.level,
+            vendor_value: item.0.vendor_value,
+            flags: item.0.flags,
+            restrictions: item.0.restrictions,
+            upgrades_into: item.0.upgrades_into,
+            upgrades_from: item.0.upgrades_from,
+            details: item.0.details,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -176,6 +246,39 @@ pub enum ItemFlag {
     Unique,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ItemDetails {
+    Consumable(ItemConsumableDetails),
+    // don't care about the rest for now
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ItemConsumableDetails {
+    #[serde(rename = "type")]
+    consumable_type: ItemConsumableType,
+    recipe_id: Option<u32>,
+    extra_recipe_ids: Option<Vec<u32>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ItemConsumableType {
+    AppearanceChange,
+    Booze,
+    ContractNpc,
+    Currency,
+    Food,
+    Generic,
+    Halloween,
+    Immediate,
+    MountRandomUnlock,
+    RandomUnlock,
+    Transmutation,
+    Unlock,
+    UpgradeRemoval,
+    Utility,
+    TeleportToFriend,
+}
+
 // NOTE: most can only be purchased in blocks of 10 - we ignore that for now
 // NOTE: doesn't include karma purchases, since the karma to gold rate is undefined and we don't
 // support multiple currencies
@@ -244,6 +347,25 @@ impl Item {
     pub fn is_common_ascended_material(&self) -> bool {
         // Empyreal Fragment, Dragonite Ore, Pile of Bloodstone Dust
         self.id == 46735 || self.id == 46733 || self.id == 46731
+    }
+
+    pub fn recipe_unlocks(&self) -> Option<Vec<u32>> {
+        match (&self.item_type, &self.details) {
+            (ItemType::Consumable, Some(ItemDetails::Consumable(details))) => {
+                let mut unlocks = vec![];
+                if let Some(recipe_id) = details.recipe_id {
+                    unlocks.push(recipe_id);
+                } else if let Some(extra_recipe_ids) = &details.extra_recipe_ids {
+                    unlocks.extend(extra_recipe_ids);
+                }
+                Some(unlocks)
+            },
+            (ItemType::Consumable, None) => {
+                eprintln!("Item {} is a consumable with no details", self.id);
+                None
+            },
+            _ => None,
+        }
     }
 
     #[cfg(test)]
