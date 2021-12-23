@@ -56,8 +56,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Loading recipes");
     let api_recipes = {
-        let mut api_recipes: Vec<api::Recipe> = request::ensure_paginated_cache(
-            &CONFIG.api_recipes_file, "recipes", &None,
+        let mut api_recipes: Vec<api::Recipe> = request::get_data(
+            &CONFIG.api_recipes_file, || request::request_paginated("recipes", &None)
         ).await?;
         // If a recipe has no disciplines it cannot be crafted or discovered.
         // This appears to be used to mark deprecated recipes in the API.
@@ -71,7 +71,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("Loading custom recipes");
-    let custom_recipes: Vec<crafting::Recipe> = gw2efficiency::fetch_custom_recipes(&CONFIG.custom_recipes_file)
+    let custom_recipes: Vec<crafting::Recipe> = request::get_data(
+        &CONFIG.custom_recipes_file, gw2efficiency::fetch_custom_recipes
+    )
         .await
         .unwrap_or_else(|e| {
             eprintln!("Failed to fetch custom recipes: {}", e);
@@ -84,7 +86,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("Loading items");
-    let items: Vec<api::Item> = request::ensure_paginated_cache(&CONFIG.items_file, "items", &CONFIG.lang).await?;
+    let items: Vec<api::Item> = request::get_data(
+        &CONFIG.items_file, || request::request_paginated("items", &CONFIG.lang)
+    ).await?;
     println!(
         "Loaded {} items stored at '{}'",
         items.len(),

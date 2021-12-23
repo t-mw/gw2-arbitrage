@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::future::Future;
 
 use crate::config;
 
@@ -38,20 +39,20 @@ pub async fn fetch_item_listings(
     Ok(tp_listings)
 }
 
-pub async fn ensure_paginated_cache<T>(
+pub async fn get_data<T, Fut>(
     data_path: impl AsRef<Path>,
-    url_path: &str,
-    lang: &Option<config::Language>,
+    getter: impl FnOnce() -> Fut,
 ) -> Result<Vec<T>, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
     T: serde::de::DeserializeOwned,
+    Fut: Future<Output = Result<Vec<T>, Box<dyn std::error::Error>>>,
 {
     if let Ok(file) = File::open(&data_path) {
         let stream = DeflateDecoder::new(file);
         deserialize_from(stream).map_err(|e| {
             format!(
-                "Failed to deserialize existing cache at '{}' ({}). \
+                "Failed to deserialize existing data at '{}' ({}). \
                  Try using the --reset-data flag to replace the data files.",
                 data_path.as_ref().display(),
                 e,
@@ -59,7 +60,7 @@ where
             .into()
         })
     } else {
-        let items = request_paginated(url_path, lang).await?;
+        let items = getter().await?;
 
         let file = File::create(data_path)?;
         let stream = DeflateEncoder::new(file, Compression::default());
