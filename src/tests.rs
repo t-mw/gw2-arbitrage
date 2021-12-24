@@ -1,12 +1,12 @@
 use crate::{
     api::{self, Item, ItemListings, Listing, RecipeIngredient},
     config::Discipline,
-    crafting::{self, PurchasedIngredient, Recipe},
+    crafting::{self, PurchasedIngredient, Recipe, RecipeSource},
 };
 
 use num_rational::Rational32;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[test]
 fn calculate_crafting_profit_agony_infusion_unprofitable_test() {
@@ -186,6 +186,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
                     count: 1,
                 },
             ],
+            RecipeSource::Automatic,
         ),
     );
 
@@ -258,6 +259,167 @@ fn calculate_crafting_profit_with_output_item_count_test() {
             min_sell: 198,
             breakeven: 91
         })
+    );
+}
+
+#[test]
+fn calculate_crafting_profit_unknown_recipe_test() {
+    struct TestItem {
+        name: String,
+        id: u32,
+        recipe_id: Option<u32>,
+        ingredients: Vec<u32>,
+    }
+
+    let ingredient_1 = TestItem {
+        name: "Purchasable ingredient 1".to_string(),
+        id: 12356,
+        recipe_id: None,
+        ingredients: vec![],
+    };
+    let ingredient_2 = TestItem {
+        name: "Purchasable ingredient 2".to_string(),
+        id: 12357,
+        recipe_id: None,
+        ingredients: vec![],
+    };
+
+    let ingredient_of_ingredient_3 = TestItem {
+        name: "Purchasable ingredient 3 - sub-ingredient".to_string(),
+        id: 12359,
+        recipe_id: None,
+        ingredients: vec![],
+    };
+    let ingredient_3 = TestItem {
+        name: "Purchasable ingredient 3".to_string(),
+        id: 12358,
+        recipe_id: Some(7856),
+        ingredients: vec![ingredient_of_ingredient_3.id],
+    };
+
+    let crafted_ingredient_with_known_recipe = TestItem {
+        name: "Crafted ingredient with known recipe".to_string(),
+        id: 1233,
+        recipe_id: Some(7853),
+        ingredients: vec![ingredient_1.id],
+    };
+    let crafted_ingredient_with_unknown_recipe = TestItem {
+        name: "Crafted ingredient with unknown recipe".to_string(),
+        id: 1234,
+        recipe_id: Some(7854),
+        ingredients: vec![ingredient_2.id],
+    };
+    let crafted_ingredient_cheaper_on_trading_post = TestItem {
+        name: "Crafted ingredient which is cheaper to buy on trading post".to_string(),
+        id: 1235,
+        recipe_id: Some(7855),
+        ingredients: vec![ingredient_3.id],
+    };
+    let main_item = TestItem {
+        name: "Main item".to_string(),
+        id: 1232,
+        recipe_id: Some(7852),
+        ingredients: vec![
+            crafted_ingredient_with_known_recipe.id,
+            crafted_ingredient_with_unknown_recipe.id,
+            crafted_ingredient_cheaper_on_trading_post.id,
+        ],
+    };
+
+    let mut known_recipes = HashSet::new();
+    known_recipes.insert(crafted_ingredient_with_known_recipe.recipe_id.unwrap());
+
+    let mut expected_unknown_recipes = HashSet::new();
+    expected_unknown_recipes.insert(main_item.recipe_id.unwrap());
+    expected_unknown_recipes.insert(crafted_ingredient_with_unknown_recipe.recipe_id.unwrap());
+
+    let mut expected_purchased_ingredients = HashSet::new();
+    expected_purchased_ingredients.insert(crafted_ingredient_cheaper_on_trading_post.id);
+    expected_purchased_ingredients.insert(ingredient_1.id);
+    expected_purchased_ingredients.insert(ingredient_2.id);
+
+    let mut items_map = HashMap::new();
+    let mut recipes_map = HashMap::new();
+    let mut tp_listings = vec![];
+    for item in [
+        &main_item,
+        &crafted_ingredient_with_known_recipe,
+        &crafted_ingredient_with_unknown_recipe,
+        &crafted_ingredient_cheaper_on_trading_post,
+        &ingredient_1,
+        &ingredient_2,
+        &ingredient_3,
+        &ingredient_of_ingredient_3,
+    ] {
+        items_map.insert(item.id, Item::mock(item.id, &item.name, 0));
+
+        if let Some(recipe_id) = item.recipe_id {
+            recipes_map.insert(
+                item.id,
+                Recipe::mock(
+                    recipe_id,
+                    item.id,
+                    1,
+                    [],
+                    &item
+                        .ingredients
+                        .iter()
+                        .map(|&ingredient_id| RecipeIngredient {
+                            item_id: ingredient_id,
+                            count: 1,
+                        })
+                        .collect::<Vec<_>>(),
+                    RecipeSource::Purchasable,
+                ),
+            );
+        }
+
+        // prices chosen such that ingredient 3 will be marked as craftable first
+        // because crafting it is cheaper than buying it from the tp, but then it will
+        // have to be discarded because the parent item of ingredient 3 is cheaper to
+        // buy from the tp than to craft.
+        let sells = if item.id == ingredient_of_ingredient_3.id {
+            vec![(2, 100)]
+        } else if item.id == ingredient_1.id
+            || item.id == ingredient_2.id
+            || item.id == ingredient_3.id
+        {
+            vec![(3, 100)]
+        } else if item.id == crafted_ingredient_cheaper_on_trading_post.id {
+            vec![(1, 100)]
+        } else {
+            vec![]
+        };
+        let buys = if item.id == main_item.id {
+            vec![(198, 47), (199, 50), (200, 1)]
+        } else {
+            vec![]
+        };
+        tp_listings.push((item.id, buys, sells));
+    }
+
+    let mut purchased_ingredients = HashMap::new();
+    let profitable_item = crafting::calculate_crafting_profit(
+        main_item.id,
+        &recipes_map,
+        &Some(known_recipes),
+        &items_map,
+        &tp_listings_map(tp_listings),
+        Some(&mut purchased_ingredients),
+        &Default::default(),
+    );
+
+    assert!(profitable_item.is_some());
+    assert_eq!(
+        purchased_ingredients
+            .into_iter()
+            .map(|((item_id, _), _)| item_id)
+            .collect::<HashSet<u32>>(),
+        expected_purchased_ingredients
+    );
+    assert_eq!(
+        profitable_item.unwrap().unknown_recipes,
+        expected_unknown_recipes
     );
 }
 
@@ -345,6 +507,7 @@ mod data {
                         count: 1,
                     },
                 ],
+                RecipeSource::Automatic,
             ),
         );
         recipes_map.insert(
@@ -364,6 +527,7 @@ mod data {
                         count: 1,
                     },
                 ],
+                RecipeSource::Automatic,
             ),
         );
         recipes_map.insert(
@@ -383,6 +547,7 @@ mod data {
                         count: 1,
                     },
                 ],
+                RecipeSource::Automatic,
             ),
         );
         recipes_map.insert(
@@ -402,6 +567,7 @@ mod data {
                         count: 1,
                     },
                 ],
+                RecipeSource::Automatic,
             ),
         );
         recipes_map.insert(
@@ -421,6 +587,7 @@ mod data {
                         count: 1,
                     },
                 ],
+                RecipeSource::Automatic,
             ),
         );
         recipes_map.insert(
@@ -440,6 +607,7 @@ mod data {
                         count: 1,
                     },
                 ],
+                RecipeSource::Automatic,
             ),
         );
         recipes_map.insert(
@@ -459,6 +627,7 @@ mod data {
                         count: 1,
                     },
                 ],
+                RecipeSource::Automatic,
             ),
         );
         recipes_map.insert(
@@ -478,6 +647,7 @@ mod data {
                         count: 1,
                     },
                 ],
+                RecipeSource::Automatic,
             ),
         );
         recipes_map.insert(
@@ -497,6 +667,7 @@ mod data {
                         count: 1,
                     },
                 ],
+                RecipeSource::Automatic,
             ),
         );
         recipes_map.insert(
@@ -516,6 +687,7 @@ mod data {
                         count: 1,
                     },
                 ],
+                RecipeSource::Automatic,
             ),
         );
         recipes_map.insert(
@@ -535,6 +707,7 @@ mod data {
                         count: 1,
                     },
                 ],
+                RecipeSource::Automatic,
             ),
         );
         recipes_map.insert(
@@ -554,6 +727,7 @@ mod data {
                         count: 1,
                     },
                 ],
+                RecipeSource::Automatic,
             ),
         );
         recipes_map.insert(
@@ -573,6 +747,7 @@ mod data {
                         count: 1,
                     },
                 ],
+                RecipeSource::Automatic,
             ),
         );
         recipes_map.insert(
@@ -592,6 +767,7 @@ mod data {
                         count: 1,
                     },
                 ],
+                RecipeSource::Automatic,
             ),
         );
         recipes_map.insert(
@@ -611,6 +787,7 @@ mod data {
                         count: 1,
                     },
                 ],
+                RecipeSource::Automatic,
             ),
         );
 
