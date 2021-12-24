@@ -93,6 +93,7 @@ struct PreciseCraftingCost {
 
 struct PreciseCraftingCostContext {
     purchases: Vec<(u32, Rational32, Source)>,
+    crafted: Vec<u32>,
     crafting_steps: Rational32,
 }
 
@@ -103,7 +104,6 @@ fn calculate_precise_min_crafting_cost(
     item_count: Rational32,
     recipes_map: &HashMap<u32, Recipe>,
     items_map: &HashMap<u32, api::Item>,
-    add_recipe: &mut dyn FnMut(&Recipe) -> (),
     tp_listings_map: &mut BTreeMap<u32, ItemListings>,
     context: &mut PreciseCraftingCostContext,
     opt: &config::CraftingOptions,
@@ -114,6 +114,7 @@ fn calculate_precise_min_crafting_cost(
         Rational32::from(recipe.map(|recipe| recipe.output_item_count).unwrap_or(1));
 
     let purchases_ptr = context.purchases.len();
+    let crafted_ptr = context.crafted.len();
     let crafting_steps_before = context.crafting_steps;
 
     let crafting_cost = recipe.and_then(|recipe| {
@@ -130,7 +131,6 @@ fn calculate_precise_min_crafting_cost(
                     ingredient_count,
                     recipes_map,
                     items_map,
-                    add_recipe,
                     tp_listings_map,
                     context,
                     opt,
@@ -173,8 +173,8 @@ fn calculate_precise_min_crafting_cost(
     };
 
     if source == Source::Crafting {
+        context.crafted.push(item_id);
         context.crafting_steps += item_count / output_item_count;
-        add_recipe(recipe.unwrap());
     } else {
         for (purchase_id, purchase_quantity, purchase_source) in
             context.purchases.drain(purchases_ptr..)
@@ -186,6 +186,7 @@ fn calculate_precise_min_crafting_cost(
                     .pending_buy_quantity -= purchase_quantity;
             }
         }
+        context.crafted.drain(crafted_ptr..);
         context.crafting_steps = crafting_steps_before;
     }
 
@@ -242,30 +243,6 @@ pub fn calculate_crafting_profit(
         .map_or(0, |l| l.unit_price);
     let mut breakeven = Rational32::zero();
 
-    // Check if we can craft this
-    let mut add_recipe = |recipe: &Recipe| {
-        if let Some(id) = recipe.id.filter(|id| !unknown_recipes.contains(id)) {
-            match recipe.source {
-                RecipeSource::Purchasable | RecipeSource::Achievement => {
-                    if let Some(known_recipes) = known_recipes {
-                        if !known_recipes.contains(&id) {
-                            unknown_recipes.insert(id);
-                        }
-                    } else {
-                        // If we have no known recipes, assume we know none
-                        unknown_recipes.insert(id);
-                    }
-                }
-                // These aren't included in the API; assume you know them
-                RecipeSource::Automatic | RecipeSource::Discoverable => {
-                    // TODO: instead, check if account has a char with the required crafting level
-                    // Would require a key with the characters scope. Still wouldn't detect
-                    // discoverable recipes, but would detect access to them
-                }
-            }
-        }
-    };
-
     // simulate crafting 1 item per loop iteration until it becomes unprofitable
     loop {
         if let Some(count) = opt.count {
@@ -276,6 +253,7 @@ pub fn calculate_crafting_profit(
 
         let mut context = PreciseCraftingCostContext {
             purchases: vec![],
+            crafted: vec![],
             crafting_steps: Rational32::zero(),
         };
 
@@ -287,7 +265,6 @@ pub fn calculate_crafting_profit(
             output_item_count.into(),
             recipes_map,
             items_map,
-            &mut add_recipe,
             &mut tp_listings_map,
             &mut context,
             opt,
@@ -319,6 +296,34 @@ pub fn calculate_crafting_profit(
             breakeven = crafting_cost / output_item_count;
         } else {
             break;
+        }
+
+        for item_id in &context.crafted {
+            let recipe = if let Some(recipe) = recipes_map.get(item_id) {
+                recipe
+            } else {
+                continue;
+            };
+            if let Some(id) = recipe.id.filter(|id| !unknown_recipes.contains(id)) {
+                match recipe.source {
+                    RecipeSource::Purchasable | RecipeSource::Achievement => {
+                        // If we have no known recipes, assume we know none
+                        if known_recipes
+                            .as_ref()
+                            .filter(|recipes| recipes.contains(&id))
+                            .is_none()
+                        {
+                            unknown_recipes.insert(id);
+                        }
+                    }
+                    // These aren't included in the API; assume you know them
+                    RecipeSource::Automatic | RecipeSource::Discoverable => {
+                        // TODO: instead, check if account has a char with the required crafting level
+                        // Would require a key with the characters scope. Still wouldn't detect
+                        // discoverable recipes, but would detect access to them
+                    }
+                }
+            }
         }
 
         for (purchase_id, count, purchase_source) in &context.purchases {

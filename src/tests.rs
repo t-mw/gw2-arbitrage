@@ -374,8 +374,8 @@ fn calculate_crafting_profit_unknown_recipe_test() {
             );
         }
 
-        // prices chosen such that ingredient 3 will be marked as craftable first
-        // because crafting it is cheaper than buying it from the tp, but then it will
+        // prices chosen such that ingredient 3 will first be marked as craftable
+        // because crafting it is cheaper than buying it from the tp, but it will then
         // have to be discarded because the parent item of ingredient 3 is cheaper to
         // buy from the tp than to craft.
         let sells = if item.id == ingredient_of_ingredient_3.id {
