@@ -321,8 +321,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tp_prices: Vec<api::Price> = request::request_paginated("commerce/prices", &None).await?;
     println!("Loaded {} trading post prices", tp_prices.len());
 
-    let mut tp_prices_map = vec_to_map(tp_prices, |x| x.id);
-    tp_prices_map.get_mut(&49429).unwrap().sells.unit_price = 6333;
+    let tp_prices_map = vec_to_map(tp_prices, |x| x.id);
 
     let mut profitable_item_ids = vec![];
     let mut ingredient_ids = vec![];
