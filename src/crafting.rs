@@ -552,7 +552,7 @@ impl Listing {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-enum RecipeSource {
+pub enum RecipeSource {
     Automatic,
     Discoverable,
     Purchasable,
@@ -655,6 +655,7 @@ impl Recipe {
         output_item_count: i32,
         disciplines: [config::Discipline; A],
         ingredients: &[api::RecipeIngredient],
+        source: RecipeSource,
     ) -> Self {
         Recipe {
             id: Some(id),
@@ -662,7 +663,7 @@ impl Recipe {
             output_item_count,
             disciplines: disciplines.to_vec(),
             ingredients: ingredients.to_vec(),
-            source: RecipeSource::Automatic,
+            source,
         }
     }
 }
