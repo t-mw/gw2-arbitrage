@@ -1,7 +1,7 @@
 use crate::api;
 use crate::gw2efficiency;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use num_rational::Rational32;
 use num_traits::{Signed, Zero};
@@ -234,9 +234,12 @@ pub fn calculate_crafting_profit(
     let mut unknown_recipes = HashSet::new();
 
     let mut min_sell = 0;
-    let max_sell = tp_listings_map.get(&item_id)
+    let max_sell = tp_listings_map
+        .get(&item_id)
         .unwrap_or_else(|| panic!("Missing listings for item id: {}", item_id))
-        .buys.last().map_or(0, |l| l.unit_price);
+        .buys
+        .last()
+        .map_or(0, |l| l.unit_price);
     let mut breakeven = Rational32::zero();
 
     // Check if we can craft this
@@ -341,7 +344,7 @@ pub fn calculate_crafting_profit(
             if let Some(purchased_ingredients) = &mut purchased_ingredients {
                 let ingredient = purchased_ingredients
                     .entry((*purchase_id, *purchase_source))
-                    .or_insert_with(|| PurchasedIngredient{
+                    .or_insert_with(|| PurchasedIngredient {
                         count: Rational32::zero(),
                         max_price: 0,
                         min_price: 0,
@@ -602,7 +605,10 @@ impl TryFrom<gw2efficiency::Recipe> for Recipe {
         // outputs appear to be account bound anyway, so won't be on TP.
         // There are some useful Scribe WvW BPs in the data, so ignoring all
         // normal discipline recipes would catch those too.
-        let source = if recipe.disciplines.contains(&config::Discipline::Achievement) {
+        let source = if recipe
+            .disciplines
+            .contains(&config::Discipline::Achievement)
+        {
             RecipeSource::Achievement
         } else {
             RecipeSource::Automatic

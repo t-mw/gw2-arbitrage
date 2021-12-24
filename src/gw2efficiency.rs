@@ -2,8 +2,8 @@ use serde::{de::Deserializer, Deserialize};
 use serde_json::Value;
 
 use crate::api;
-use crate::crafting;
 use crate::config;
+use crate::crafting;
 
 use std::str::FromStr;
 
@@ -108,9 +108,11 @@ where
             let mut c: Vec<config::Discipline> = Vec::new();
             for val in vec.iter() {
                 if let Value::String(s) = val {
-                    c.push(config::Discipline::from_str(s).map_err(|e| Error::custom(
-                        format!("Unknown string \"{}\": {}", s, e)
-                    ))?);
+                    c.push(
+                        config::Discipline::from_str(s).map_err(|e| {
+                            Error::custom(format!("Unknown string \"{}\": {}", s, e))
+                        })?,
+                    );
                 } else {
                     return Err(Error::custom("Invalid discipline - not a string"));
                 }

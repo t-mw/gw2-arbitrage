@@ -1,8 +1,8 @@
 use num_rational::Rational32;
-use serde::{Deserialize, Serialize, Deserializer, de};
+use serde::{de, Deserialize, Deserializer, Serialize};
 use std::fmt;
 
-use phf::{phf_set, phf_map};
+use phf::{phf_map, phf_set};
 use strum::Display;
 
 use crate::config;
@@ -117,9 +117,8 @@ impl<'de> Deserialize<'de> for ApiItem {
 
         let item = ItemDeser::deserialize(d)?;
         let details = match (&item.item_type, item.details) {
-            (ItemType::Consumable, Some(details)) => Some(
-                ItemDetails::Consumable(serde_json::from_value(details)
-                .map_err(de::Error::custom)?
+            (ItemType::Consumable, Some(details)) => Some(ItemDetails::Consumable(
+                serde_json::from_value(details).map_err(de::Error::custom)?,
             )),
             _ => None,
         };
@@ -223,7 +222,6 @@ impl ItemRarity {
         }
     }
 }
-
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum ItemFlag {
@@ -359,11 +357,11 @@ impl Item {
                     unlocks.extend(extra_recipe_ids);
                 }
                 Some(unlocks)
-            },
+            }
             (ItemType::Consumable, None) => {
                 eprintln!("Item {} is a consumable with no details", self.id);
                 None
-            },
+            }
             _ => None,
         }
     }

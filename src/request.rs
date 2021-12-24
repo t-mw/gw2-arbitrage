@@ -8,13 +8,13 @@ use flate2::Compression;
 use futures::{stream, StreamExt};
 use serde_json;
 
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashSet;
 use std::fs::File;
+use std::future::Future;
+use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::path::PathBuf;
-use std::collections::HashSet;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-use std::future::Future;
 
 use crate::config;
 
@@ -171,7 +171,11 @@ where
             item_ids_str.join(",")
         );
         if let Some(cache_dir) = cache_dir {
-            result.extend(cache_get::<Vec<T>>(&url, cache_dir, None).await?.into_iter());
+            result.extend(
+                cache_get::<Vec<T>>(&url, cache_dir, None)
+                    .await?
+                    .into_iter(),
+            );
         } else {
             result.extend(fetch::<Vec<T>>(&url, None).await?.into_iter());
         }
@@ -180,7 +184,10 @@ where
     Ok(result)
 }
 
-pub async fn fetch_account_recipes(key: &str, cache_dir: &PathBuf) -> Result<HashSet<u32>, Box<dyn std::error::Error>> {
+pub async fn fetch_account_recipes(
+    key: &str,
+    cache_dir: &PathBuf,
+) -> Result<HashSet<u32>, Box<dyn std::error::Error>> {
     let base = "https://api.guildwars2.com/v2/account/recipes?access_token=";
     let url = format!("{}{}", base, key);
     let display = format!("{}{}", base, "<api-key>");
@@ -209,7 +216,7 @@ where
         let stream = DeflateDecoder::new(file);
         let v = deserialize_from(stream)?;
 
-        return Ok(v)
+        return Ok(v);
     }
 
     let v = fetch(&url, display).await?;
@@ -222,10 +229,7 @@ where
     Ok(v)
 }
 
-async fn fetch<T>(
-    url: &str,
-    display: Option<&str>,
-) -> Result<T, Box<dyn std::error::Error>>
+async fn fetch<T>(url: &str, display: Option<&str>) -> Result<T, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
     T: serde::de::DeserializeOwned,

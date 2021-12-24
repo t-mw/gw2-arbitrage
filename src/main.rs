@@ -4,11 +4,11 @@ use num_traits::ToPrimitive;
 use rayon::prelude::*;
 use serde::{Serialize, Serializer};
 
-use std::collections::{HashMap, HashSet};
 use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 
-mod config;
 mod api;
+mod config;
 mod crafting;
 mod gw2efficiency;
 mod request;
@@ -47,8 +47,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let known_recipes = if let Some(key) = &CONFIG.api_key {
         Some(
             request::fetch_account_recipes(&key, &CONFIG.cache_dir)
-            .await
-            .map_err(|e| format!("API error fetching recipe unlocks: {}", e))?
+                .await
+                .map_err(|e| format!("API error fetching recipe unlocks: {}", e))?,
         )
     } else {
         None
@@ -56,9 +56,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Loading recipes");
     let api_recipes = {
-        let mut api_recipes: Vec<api::Recipe> = request::get_data(
-            &CONFIG.api_recipes_file, || request::request_paginated("recipes", &None)
-        ).await?;
+        let mut api_recipes: Vec<api::Recipe> = request::get_data(&CONFIG.api_recipes_file, || {
+            request::request_paginated("recipes", &None)
+        })
+        .await?;
         // If a recipe has no disciplines it cannot be crafted or discovered.
         // This appears to be used to mark deprecated recipes in the API.
         api_recipes.retain(|recipe| recipe.disciplines.len() > 0);
@@ -72,13 +73,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Loading custom recipes");
     let custom_recipes: Vec<crafting::Recipe> = request::get_data(
-        &CONFIG.custom_recipes_file, gw2efficiency::fetch_custom_recipes
+        &CONFIG.custom_recipes_file,
+        gw2efficiency::fetch_custom_recipes,
     )
-        .await
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to fetch custom recipes: {}", e);
-            vec![]
-        });
+    .await
+    .unwrap_or_else(|e| {
+        eprintln!("Failed to fetch custom recipes: {}", e);
+        vec![]
+    });
     println!(
         "Loaded {} custom recipes stored at '{}'",
         custom_recipes.len(),
@@ -86,12 +88,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("Loading items");
-    let items: Vec<api::Item> = request::get_data(
-        &CONFIG.items_file, || async {
-            let api_items: Vec<api::ApiItem> = request::request_paginated("items", &CONFIG.lang).await?;
-            Ok(api_items.into_iter().map(|api_item| api::Item::from(api_item)).collect())
-        }
-    ).await?;
+    let items: Vec<api::Item> = request::get_data(&CONFIG.items_file, || async {
+        let api_items: Vec<api::ApiItem> =
+            request::request_paginated("items", &CONFIG.lang).await?;
+        Ok(api_items
+            .into_iter()
+            .map(|api_item| api::Item::from(api_item))
+            .collect())
+    })
+    .await?;
     println!(
         "Loaded {} items stored at '{}'",
         items.len(),
@@ -122,7 +127,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         request_listing_item_ids.sort_unstable();
         request_listing_item_ids.dedup();
 
-        let tp_listings = request::fetch_item_listings(&request_listing_item_ids, Some(&CONFIG.cache_dir)).await?;
+        let tp_listings =
+            request::fetch_item_listings(&request_listing_item_ids, Some(&CONFIG.cache_dir))
+                .await?;
         let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
 
         let mut purchased_ingredients = Default::default();
@@ -154,7 +161,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &item,
             copper_to_string(profitable_item.profit.to_integer()),
             profitable_item.profit_per_crafting_step().to_integer(),
-            (profitable_item.profit_on_cost() * 100).round().to_integer(),
+            (profitable_item.profit_on_cost() * 100)
+                .round()
+                .to_integer(),
         );
         let price_msg = if profitable_item.max_sell == profitable_item.min_sell {
             format!("{}", copper_to_string(profitable_item.min_sell))
@@ -173,17 +182,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         println!("============");
-        let mut sorted_ingredients: Vec<(&(u32, crafting::Source), &crafting::PurchasedIngredient)> = purchased_ingredients.iter().collect();
+        let mut sorted_ingredients: Vec<(
+            &(u32, crafting::Source),
+            &crafting::PurchasedIngredient,
+        )> = purchased_ingredients.iter().collect();
         sorted_ingredients.sort_unstable_by(|a, b| {
-            if b.0.1 == a.0.1 {
+            if b.0 .1 == a.0 .1 {
                 match b.1.count.cmp(&a.1.count) {
                     Ordering::Equal => match b.1.total_cost.cmp(&a.1.total_cost) {
-                        Ordering::Equal => b.0.0.cmp(&a.0.0),
+                        Ordering::Equal => b.0 .0.cmp(&a.0 .0),
                         v => v,
                     },
                     v => v,
                 }
-            } else if b.0.1 == crafting::Source::Vendor {
+            } else if b.0 .1 == crafting::Source::Vendor {
                 Ordering::Less
             } else {
                 Ordering::Greater
@@ -211,24 +223,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ingredient_count.to_string()
             };
             let source_msg = match *ingredient_source {
-                crafting::Source::TradingPost => if ingredient.max_price == ingredient.min_price {
-                    format!(
-                        " (at {}) Subtotal: {}",
-                        copper_to_string(ingredient.min_price),
-                        copper_to_string(ingredient.total_cost.to_integer()),
-                    )
-                } else {
-                    format!(
-                        " (at {} to {}) Subtotal: {}",
-                        copper_to_string(ingredient.min_price),
-                        copper_to_string(ingredient.max_price),
-                        copper_to_string(ingredient.total_cost.to_integer()),
-                    )
-                },
+                crafting::Source::TradingPost => {
+                    if ingredient.max_price == ingredient.min_price {
+                        format!(
+                            " (at {}) Subtotal: {}",
+                            copper_to_string(ingredient.min_price),
+                            copper_to_string(ingredient.total_cost.to_integer()),
+                        )
+                    } else {
+                        format!(
+                            " (at {} to {}) Subtotal: {}",
+                            copper_to_string(ingredient.min_price),
+                            copper_to_string(ingredient.max_price),
+                            copper_to_string(ingredient.total_cost.to_integer()),
+                        )
+                    }
+                }
                 crafting::Source::Vendor => {
-                    let vendor_cost = items_map.get(ingredient_id).unwrap_or_else(|| {
-                        panic!("Missing item for ingredient {}", ingredient_id)
-                    }).vendor_cost();
+                    let vendor_cost = items_map
+                        .get(ingredient_id)
+                        .unwrap_or_else(|| panic!("Missing item for ingredient {}", ingredient_id))
+                        .vendor_cost();
                     if let Some(cost) = vendor_cost {
                         format!(
                             " (vendor: {}) Subtotal: {}",
@@ -238,7 +253,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         "".to_string()
                     }
-                },
+                }
                 crafting::Source::Crafting => "".to_string(),
             };
             println!(
@@ -258,29 +273,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             profitable_item.count, item_id
         );
 
-        let unknown_recipes: Vec<u32> = profitable_item.unknown_recipes.iter().map(|&id| id).collect();
+        let unknown_recipes: Vec<u32> = profitable_item
+            .unknown_recipes
+            .iter()
+            .map(|&id| id)
+            .collect();
         if unknown_recipes.len() > 0 {
-            let req_recipes = unknown_recipes.iter().map(|id| {
-                let recipe_names = items_map.iter()
-                    .filter(|(_, item)| {
-                        if let Some(unlocks) = &item.recipe_unlocks() {
-                            unlocks.iter().filter(|&recipe_id| id == recipe_id).count() > 0
-                        } else {
-                            false
-                        }
-                    })
-                    .map(|(_, item)| format!("{}", &item.name))
-                    .collect::<Vec<String>>()
-                    .join(" or ");
-                if recipe_names.len() > 0 {
-                    recipe_names
-                } else {
-                    // recipe 5424 for item 29407 has no unlock item, possibly others
-                    format!("Recipe {} is not available!", &id)
-                }
-            })
-            .collect::<Vec<String>>()
-            .join("\n");
+            let req_recipes = unknown_recipes
+                .iter()
+                .map(|id| {
+                    let recipe_names = items_map
+                        .iter()
+                        .filter(|(_, item)| {
+                            if let Some(unlocks) = &item.recipe_unlocks() {
+                                unlocks.iter().filter(|&recipe_id| id == recipe_id).count() > 0
+                            } else {
+                                false
+                            }
+                        })
+                        .map(|(_, item)| format!("{}", &item.name))
+                        .collect::<Vec<String>>()
+                        .join(" or ");
+                    if recipe_names.len() > 0 {
+                        recipe_names
+                    } else {
+                        // recipe 5424 for item 29407 has no unlock item, possibly others
+                        format!("Recipe {} is not available!", &id)
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join("\n");
             println!(
                 "You {} craft this yet. Required recipes{}:\n{}",
                 match known_recipes {
@@ -463,7 +485,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect::<Vec<_>>()
                 .join("/"),
             item_id,
-            unknown_recipes: profitable_item.unknown_recipes.iter().map(|&id| id).collect(),
+            unknown_recipes: profitable_item
+                .unknown_recipes
+                .iter()
+                .map(|&id| id)
+                .collect(),
             total_profit: profitable_item.profit.to_integer(),
             number_required: profitable_item.count,
             profit_per_item: profitable_item.profit_per_item().to_integer(),
@@ -484,7 +510,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             format!(
                 "{}",
                 output_row
-                    .unknown_recipes.iter()
+                    .unknown_recipes
+                    .iter()
                     .map(|id| id.to_string())
                     .collect::<Vec<String>>()
                     .join(",")

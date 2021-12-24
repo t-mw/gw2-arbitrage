@@ -6,10 +6,10 @@ use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
-use serde::{Serialize, Deserialize};
-use toml;
 use strum::{Display, EnumString, EnumVariantNames, VariantNames};
+use toml;
 
 use lazy_static::lazy_static;
 
@@ -39,7 +39,6 @@ pub struct Config {
     pub items_file: PathBuf,
 
     pub item_id: Option<u32>,
-
 }
 
 lazy_static! {
@@ -49,7 +48,6 @@ lazy_static! {
 impl Config {
     fn new() -> Self {
         let mut config = Config::default();
-
 
         let opt = Opt::from_args();
 
@@ -65,26 +63,27 @@ impl Config {
 
         config.filter_disciplines = opt.filter_disciplines;
 
-
         let file: ConfigFile = match get_file_config(&opt.config_file) {
             Ok(config) => config,
             Err(e) => {
                 println!("Error opening config file: {}", e);
                 ConfigFile::default()
-            },
+            }
         };
 
         config.api_key = file.api_key;
 
         if let None = config.lang {
             if let Some(code) = file.lang {
-                config.lang = code.parse().map_or_else(|e| {
-                    println!("Config file: {}", e);
-                    None
-                }, |c| Some(c))
+                config.lang = code.parse().map_or_else(
+                    |e| {
+                        println!("Config file: {}", e);
+                        None
+                    },
+                    |c| Some(c),
+                )
             }
         }
-
 
         let cache_dir = cache_dir(&opt.cache_dir).expect("Failed to identify cache dir");
         ensure_dir(&cache_dir).expect("Failed to create cache dir");
@@ -105,23 +104,35 @@ impl Config {
         custom_recipes_path.push("custom.bin");
         config.custom_recipes_file = custom_recipes_path;
 
-        let lang_suffix = Language::code(&config.lang)
-            .map_or_else(|| "".to_string(), |c| format!("_{}", c));
+        let lang_suffix =
+            Language::code(&config.lang).map_or_else(|| "".to_string(), |c| format!("_{}", c));
         let mut items_path = data_dir.clone();
         items_path.push(format!("items{}.bin", lang_suffix));
         config.items_file = items_path;
 
         if opt.reset_data {
             match remove_data_file(&config.items_file) {
-                Err(e) => println!("Failed to remove file {}: {}", &config.items_file.display(), e),
+                Err(e) => println!(
+                    "Failed to remove file {}: {}",
+                    &config.items_file.display(),
+                    e
+                ),
                 _ => (),
             };
             match remove_data_file(&config.api_recipes_file) {
-                Err(e) => println!("Failed to remove file {}: {}", &config.api_recipes_file.display(), e),
+                Err(e) => println!(
+                    "Failed to remove file {}: {}",
+                    &config.api_recipes_file.display(),
+                    e
+                ),
                 _ => (),
             };
             match remove_data_file(&config.custom_recipes_file) {
-                Err(e) => println!("Failed to remove file {}: {}", &config.custom_recipes_file.display(), e),
+                Err(e) => println!(
+                    "Failed to remove file {}: {}",
+                    &config.custom_recipes_file.display(),
+                    e
+                ),
                 _ => (),
             };
         }
@@ -226,7 +237,8 @@ The default file location is '{}'."#,
 });
 
 static DISCIPLINES_HELP: Lazy<String> = Lazy::new(|| {
-    format!(r#"Only show items craftable by this discipline or comma-separated list of disciplines (e.g. -d=Weaponsmith,Armorsmith)
+    format!(
+        r#"Only show items craftable by this discipline or comma-separated list of disciplines (e.g. -d=Weaponsmith,Armorsmith)
 
 valid values: {}"#,
         Discipline::VARIANTS.join(", ")
@@ -235,13 +247,13 @@ valid values: {}"#,
 
 #[derive(Debug, EnumString, EnumVariantNames)]
 pub enum Language {
-    #[strum(serialize="en")]
+    #[strum(serialize = "en")]
     English,
-    #[strum(serialize="es")]
+    #[strum(serialize = "es")]
     Spanish,
-    #[strum(serialize="de")]
+    #[strum(serialize = "de")]
     German,
-    #[strum(serialize="fr")]
+    #[strum(serialize = "fr")]
     French,
     // If you read this and can help test the TP code and extract strings from the Chinese version,
     // and would like to see this work in Chinese, please open an issue.
@@ -264,10 +276,17 @@ impl Language {
     }
 }
 
-fn get_lang<Language: FromStr + VariantNames>(code: &str) -> Result<Language, Box<dyn std::error::Error>> {
-    Language::from_str(code).map_err(|_| format!(
-        "Invalid language: {} (valid values are {})", code, Language::VARIANTS.join(", ")
-    ).into())
+fn get_lang<Language: FromStr + VariantNames>(
+    code: &str,
+) -> Result<Language, Box<dyn std::error::Error>> {
+    Language::from_str(code).map_err(|_| {
+        format!(
+            "Invalid language: {} (valid values are {})",
+            code,
+            Language::VARIANTS.join(", ")
+        )
+        .into()
+    })
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Display, EnumString, EnumVariantNames)]
@@ -293,10 +312,17 @@ pub enum Discipline {
     Growing,
 }
 
-fn get_discipline<Discipline: FromStr + VariantNames>(discipline: &str) -> Result<Discipline, Box<dyn std::error::Error>> {
-    Discipline::from_str(discipline).map_err(|_| format!(
-        "Invalid discipline: {} (valid values are {})", discipline, Discipline::VARIANTS.join(", ")
-    ).into())
+fn get_discipline<Discipline: FromStr + VariantNames>(
+    discipline: &str,
+) -> Result<Discipline, Box<dyn std::error::Error>> {
+    Discipline::from_str(discipline).map_err(|_| {
+        format!(
+            "Invalid discipline: {} (valid values are {})",
+            discipline,
+            Discipline::VARIANTS.join(", ")
+        )
+        .into()
+    })
 }
 
 fn ensure_dir(dir: &PathBuf) -> Result<&PathBuf, Box<dyn std::error::Error>> {
@@ -361,8 +387,7 @@ fn data_dir(dir: &Option<PathBuf>) -> Result<PathBuf, Box<dyn std::error::Error>
         .ok_or_else(|| "Failed to access current working directory".into())
 }
 
-fn remove_data_file(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>>
-{
+fn remove_data_file(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     if file.exists() {
         println!("Removing existing data file at '{}'", file.display());
         std::fs::remove_file(&file)
