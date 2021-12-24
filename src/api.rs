@@ -66,7 +66,7 @@ impl Recipe {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct RecipeIngredient {
     pub item_id: u32,
     pub count: i32,
@@ -375,11 +375,11 @@ impl Item {
             item_type: ItemType::Armor,
             rarity: ItemRarity::Junk,
             level: 0,
-            vendor_value: 0,
-            flags: Vec![],
-            restrictions: Vec![],
+            flags: vec![],
+            restrictions: vec![],
             upgrades_into: None,
             upgrades_from: None,
+            details: None,
         }
     }
 }

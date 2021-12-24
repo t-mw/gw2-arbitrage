@@ -289,7 +289,9 @@ fn get_lang<Language: FromStr + VariantNames>(
     })
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Display, EnumString, EnumVariantNames)]
+#[derive(
+    Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Display, EnumString, EnumVariantNames,
+)]
 pub enum Discipline {
     Artificer,
     Armorsmith,

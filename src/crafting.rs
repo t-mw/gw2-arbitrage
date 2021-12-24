@@ -382,6 +382,7 @@ pub fn calculate_crafting_profit(
     }
 }
 
+#[derive(Debug, Eq, PartialEq)]
 pub struct PurchasedIngredient {
     pub count: Rational32,
     pub max_price: i32,
@@ -648,23 +649,20 @@ impl Recipe {
     }
 
     #[cfg(test)]
-    pub(crate) fn mock<const A1: usize, const A2: usize>(
+    pub(crate) fn mock<const A: usize>(
         id: u32,
         output_item_id: u32,
         output_item_count: i32,
-        disciplines: [&str; A1],
-        ingredients: [RecipeIngredient; A2],
+        disciplines: [config::Discipline; A],
+        ingredients: &[api::RecipeIngredient],
     ) -> Self {
         Recipe {
-            id,
+            id: Some(id),
             output_item_id,
             output_item_count,
-            disciplines: disciplines
-                .iter()
-                .map(std::string::ToString::to_string)
-                .collect(),
-            ingredients: Vec::from(ingredients),
-            ..Default::default()
+            disciplines: disciplines.to_vec(),
+            ingredients: ingredients.to_vec(),
+            source: RecipeSource::Automatic,
         }
     }
 }

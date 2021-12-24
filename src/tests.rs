@@ -1,6 +1,7 @@
 use crate::{
-    api::{self, Item, ItemListings, Listing, Recipe, RecipeIngredient},
-    crafting,
+    api::{self, Item, ItemListings, Listing, RecipeIngredient},
+    config::Discipline,
+    crafting::{self, PurchasedIngredient, Recipe},
 };
 
 use num_rational::Rational32;
@@ -19,6 +20,7 @@ fn calculate_crafting_profit_agony_infusion_unprofitable_test() {
     let profitable_item = crafting::calculate_crafting_profit(
         item_id,
         &recipes_map,
+        &None,
         &items_map,
         &tp_listings_map,
         None,
@@ -93,6 +95,7 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
     let profitable_item = crafting::calculate_crafting_profit(
         plus_16_item_id,
         &recipes_map,
+        &None,
         &items_map,
         &tp_listings_map,
         Some(&mut purchased_ingredients),
@@ -104,9 +107,33 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
     assert_eq!(
         purchased_ingredients,
         vec![
-            ((46747u32, crafting::Source::TradingPost), 2.into()),
-            ((46747u32, crafting::Source::Vendor), 4.into()),
-            ((49437u32, crafting::Source::TradingPost), 8.into()),
+            (
+                (46747u32, crafting::Source::TradingPost),
+                PurchasedIngredient {
+                    count: 2.into(),
+                    max_price: 178,
+                    min_price: 120,
+                    total_cost: 298.into()
+                }
+            ),
+            (
+                (46747u32, crafting::Source::Vendor),
+                PurchasedIngredient {
+                    count: 4.into(),
+                    max_price: 0,
+                    min_price: 0,
+                    total_cost: 0.into()
+                }
+            ),
+            (
+                (49437u32, crafting::Source::TradingPost),
+                PurchasedIngredient {
+                    count: 8.into(),
+                    max_price: 1100000,
+                    min_price: 800000,
+                    total_cost: 8300000.into()
+                }
+            ),
         ]
     );
 
@@ -124,6 +151,10 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
             count: 2.into(),
             profit: api::subtract_trading_post_sales_commission(7982220 + 7982200)
                 - Rational32::from(crafting_cost),
+            unknown_recipes: Default::default(),
+            max_sell: 7982220,
+            min_sell: 7982200,
+            breakeven: 5177000
         })
     );
 }
@@ -145,7 +176,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
             item_id,
             1,
             [],
-            [
+            &[
                 RecipeIngredient {
                     item_id: 1234,
                     count: 2,
@@ -168,6 +199,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
     let profitable_item = crafting::calculate_crafting_profit(
         item_id,
         &recipes_map,
+        &None,
         &items_map,
         &tp_listings_map,
         None,
@@ -179,6 +211,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
     let profitable_item = crafting::calculate_crafting_profit(
         item_id,
         &recipes_map,
+        &None,
         &items_map,
         &tp_listings_map,
         None,
@@ -193,6 +226,10 @@ fn calculate_crafting_profit_with_output_item_count_test() {
             count: 98.into(),
             profit: api::subtract_trading_post_sales_commission(200 + 199 * 50 + 198 * 47)
                 - Rational32::from(43 + 90 + 92),
+            unknown_recipes: Default::default(),
+            max_sell: 200,
+            min_sell: 198,
+            breakeven: 2
         })
     );
 
@@ -200,6 +237,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
     let profitable_item = crafting::calculate_crafting_profit(
         item_id,
         &recipes_map,
+        &None,
         &items_map,
         &tp_listings_map,
         None,
@@ -215,6 +253,10 @@ fn calculate_crafting_profit_with_output_item_count_test() {
             count: 96.into(),
             profit: api::subtract_trading_post_sales_commission(200 + 199 * 50 + 198 * 45)
                 - Rational32::from(crafting_cost),
+            unknown_recipes: Default::default(),
+            max_sell: 200,
+            min_sell: 198,
+            breakeven: 91
         })
     );
 }
@@ -292,8 +334,8 @@ mod data {
                 7851,
                 49425,
                 1,
-                ["Artificer"],
-                [
+                [Discipline::Artificer],
+                &[
                     RecipeIngredient {
                         item_id: 49424,
                         count: 2,
@@ -311,8 +353,8 @@ mod data {
                 7852,
                 49426,
                 1,
-                ["Artificer"],
-                [
+                [Discipline::Artificer],
+                &[
                     RecipeIngredient {
                         item_id: 49425,
                         count: 2,
@@ -330,8 +372,8 @@ mod data {
                 7853,
                 49427,
                 1,
-                ["Artificer"],
-                [
+                [Discipline::Artificer],
+                &[
                     RecipeIngredient {
                         item_id: 49426,
                         count: 2,
@@ -349,8 +391,8 @@ mod data {
                 7854,
                 49428,
                 1,
-                ["Artificer"],
-                [
+                [Discipline::Artificer],
+                &[
                     RecipeIngredient {
                         item_id: 49427,
                         count: 2,
@@ -368,8 +410,8 @@ mod data {
                 7855,
                 49429,
                 1,
-                ["Artificer"],
-                [
+                [Discipline::Artificer],
+                &[
                     RecipeIngredient {
                         item_id: 49428,
                         count: 2,
@@ -387,8 +429,8 @@ mod data {
                 7856,
                 49430,
                 1,
-                ["Artificer"],
-                [
+                [Discipline::Artificer],
+                &[
                     RecipeIngredient {
                         item_id: 49429,
                         count: 2,
@@ -406,8 +448,8 @@ mod data {
                 7857,
                 49431,
                 1,
-                ["Artificer"],
-                [
+                [Discipline::Artificer],
+                &[
                     RecipeIngredient {
                         item_id: 49430,
                         count: 2,
@@ -425,8 +467,8 @@ mod data {
                 7858,
                 49432,
                 1,
-                ["Artificer"],
-                [
+                [Discipline::Artificer],
+                &[
                     RecipeIngredient {
                         item_id: 49431,
                         count: 2,
@@ -444,8 +486,8 @@ mod data {
                 7859,
                 49433,
                 1,
-                ["Artificer"],
-                [
+                [Discipline::Artificer],
+                &[
                     RecipeIngredient {
                         item_id: 49432,
                         count: 2,
@@ -463,8 +505,8 @@ mod data {
                 7860,
                 49434,
                 1,
-                ["Artificer"],
-                [
+                [Discipline::Artificer],
+                &[
                     RecipeIngredient {
                         item_id: 49433,
                         count: 2,
@@ -482,8 +524,8 @@ mod data {
                 7861,
                 49435,
                 1,
-                ["Artificer"],
-                [
+                [Discipline::Artificer],
+                &[
                     RecipeIngredient {
                         item_id: 49434,
                         count: 2,
@@ -501,8 +543,8 @@ mod data {
                 7862,
                 49436,
                 1,
-                ["Artificer"],
-                [
+                [Discipline::Artificer],
+                &[
                     RecipeIngredient {
                         item_id: 49435,
                         count: 2,
@@ -520,8 +562,8 @@ mod data {
                 7863,
                 49437,
                 1,
-                ["Artificer"],
-                [
+                [Discipline::Artificer],
+                &[
                     RecipeIngredient {
                         item_id: 49436,
                         count: 2,
@@ -539,8 +581,8 @@ mod data {
                 7864,
                 49438,
                 1,
-                ["Artificer"],
-                [
+                [Discipline::Artificer],
+                &[
                     RecipeIngredient {
                         item_id: 49437,
                         count: 2,
@@ -558,8 +600,8 @@ mod data {
                 7865,
                 49439,
                 1,
-                ["Artificer"],
-                [
+                [Discipline::Artificer],
+                &[
                     RecipeIngredient {
                         item_id: 49438,
                         count: 2,
