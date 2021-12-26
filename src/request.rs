@@ -73,11 +73,28 @@ where
 pub async fn request_paginated<T>(
     url_path: &str,
     lang: &Option<config::Language>,
+    cache_dir: Option<&Path>,
 ) -> Result<Vec<T>, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
     T: serde::de::DeserializeOwned,
 {
+    let cache_path = cache_dir.map(|dir| {
+        url_to_cache_path(
+            &format!(
+                "{}/{}",
+                url_path,
+                config::Language::code(lang).unwrap_or_default()
+            ),
+            dir,
+        )
+    });
+    if let Some(file) = cache_path.as_ref().and_then(|path| File::open(path).ok()) {
+        let stream = DeflateDecoder::new(file);
+        let v = deserialize_from(stream)?;
+        return Ok(v);
+    }
+
     let mut page_no = 0;
     let mut page_total = None;
 
@@ -100,6 +117,12 @@ where
     for result in request_results.into_iter() {
         let mut new_items = result?;
         items.append(&mut new_items);
+    }
+
+    if let Some(cache_path) = cache_path {
+        let file = File::create(cache_path)?;
+        let stream = DeflateEncoder::new(file, Compression::default());
+        serialize_into(stream, &items)?;
     }
 
     Ok(items)

@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Loading recipes");
     let api_recipes = {
         let mut api_recipes: Vec<api::Recipe> = request::get_data(&CONFIG.api_recipes_file, || {
-            request::request_paginated("recipes", &None)
+            request::request_paginated("recipes", &None, None)
         })
         .await?;
         // If a recipe has no disciplines it cannot be crafted or discovered.
@@ -90,7 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Loading items");
     let items: Vec<api::Item> = request::get_data(&CONFIG.items_file, || async {
         let api_items: Vec<api::ApiItem> =
-            request::request_paginated("items", &CONFIG.lang).await?;
+            request::request_paginated("items", &CONFIG.lang, None).await?;
         Ok(api_items
             .into_iter()
             .map(|api_item| api::Item::from(api_item))
@@ -318,7 +318,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Loading trading post prices");
-    let tp_prices: Vec<api::Price> = request::request_paginated("commerce/prices", &None).await?;
+    let tp_prices: Vec<api::Price> =
+        request::request_paginated("commerce/prices", &None, Some(&CONFIG.cache_dir)).await?;
     println!("Loaded {} trading post prices", tp_prices.len());
 
     let tp_prices_map = vec_to_map(tp_prices, |x| x.id);
@@ -380,7 +381,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     request_listing_item_ids.sort_unstable();
     request_listing_item_ids.dedup();
     // Caching these is pointless, as the vector changes on each run, leading to new URLs
-    let tp_listings = request::fetch_item_listings(&request_listing_item_ids, None).await?;
+    let tp_listings =
+        request::fetch_item_listings(&request_listing_item_ids, Some(&CONFIG.cache_dir)).await?;
     println!(
         "Loaded {} detailed trading post listings",
         tp_listings.len()
