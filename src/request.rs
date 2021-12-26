@@ -129,7 +129,6 @@ where
 
     println!("Fetching {}", url);
     let response = reqwest::get(&url).await?;
-
     if page_total.is_none() {
         let page_total_str = response
             .headers()
@@ -172,7 +171,7 @@ where
         );
         if let Some(cache_dir) = cache_dir {
             result.extend(
-                cache_get::<Vec<T>>(&url, cache_dir, None)
+                cached_fetch::<Vec<T>>(&url, None, cache_dir)
                     .await?
                     .into_iter(),
             );
@@ -191,38 +190,29 @@ pub async fn fetch_account_recipes(
     let base = "https://api.guildwars2.com/v2/account/recipes?access_token=";
     let url = format!("{}{}", base, key);
     let display = format!("{}{}", base, "<api-key>");
-    Ok(cache_get(&url, cache_dir, Some(&display)).await?)
+    Ok(cached_fetch(&url, Some(&display), cache_dir).await?)
 }
 
-async fn cache_get<T>(
+async fn cached_fetch<T>(
     url: &str,
-    cache_dir: &PathBuf,
     display: Option<&str>,
+    cache_dir: &Path,
 ) -> Result<T, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
     T: serde::de::DeserializeOwned,
 {
-    // Hash URL, check if cached, deserialize if so
-    // We're hashing on url since the API does as well
-    let mut hash = DefaultHasher::new();
-    url.hash(&mut hash);
-    let hash = hash.finish();
-
-    let mut cache_file = cache_dir.clone();
-    cache_file.push(format!("{}{}", config::CACHE_PREFIX, hash));
-
-    if let Ok(file) = File::open(&cache_file) {
+    let cache_path = url_to_cache_path(url, cache_dir);
+    if let Ok(file) = File::open(&cache_path) {
         let stream = DeflateDecoder::new(file);
         let v = deserialize_from(stream)?;
-
         return Ok(v);
     }
 
     let v = fetch(&url, display).await?;
 
     // save cache file
-    let file = File::create(cache_file)?;
+    let file = File::create(cache_path)?;
     let stream = DeflateEncoder::new(file, Compression::default());
     serialize_into(stream, &v)?;
 
@@ -256,4 +246,14 @@ where
     let v: T = serde_path_to_error::deserialize(de)?;
 
     Ok(v)
+}
+
+fn url_to_cache_path(url: &str, cache_dir: &Path) -> PathBuf {
+    let mut hash = DefaultHasher::new();
+    url.hash(&mut hash);
+    let hash = hash.finish();
+
+    let mut path = cache_dir.to_owned();
+    path.push(format!("{}{}", config::CACHE_PREFIX, hash));
+    path
 }
