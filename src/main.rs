@@ -166,7 +166,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "Sell at: {}, Money Required: {}, Breakeven price: {}",
             price_msg,
-            profitable_item.crafting_cost.include_trading_post_listing_fee(),
+            profitable_item.crafting_cost.increase_by_listing_fee(),
             profitable_item.breakeven,
         );
 

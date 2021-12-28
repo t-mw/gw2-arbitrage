@@ -2,6 +2,7 @@ use num_rational::Ratio;
 use num_traits::{Zero, ToPrimitive};
 
 use std::fmt;
+use std::cmp;
 
 // https://wiki.guildwars2.com/wiki/Trading_Post
 // Listing Fee (5%) — This nonrefundable cost covers listing and holding your items for sale. This
@@ -29,20 +30,31 @@ impl Money {
         self.copper.to_integer()
     }
 
-    pub fn include_trading_post_listing_fee(self) -> Money {
-        Money {
-            copper: self.copper * Rational32u::new(100 + TRADING_POST_LISTING_FEE, 100),
-        }
+    fn fee(&self, percent: u32) -> Rational32u {
+        cmp::max(Rational32u::from(1), self.copper * Rational32u::new(percent, 100)).round()
     }
-    pub fn trading_post_listing_price(self) -> Money {
-        Money {
-            copper: (self.copper / Rational32u::new(100 - TRADING_POST_LISTING_FEE - TRADING_POST_EXCHANGE_FEE, 100))
-                .ceil(),
-        }
-    }
+
     pub fn trading_post_sale_revenue(self) -> Money {
         Money {
-            copper: self.copper * Rational32u::new(100 - TRADING_POST_LISTING_FEE - TRADING_POST_EXCHANGE_FEE, 100),
+            copper: self.copper - self.fee(TRADING_POST_EXCHANGE_FEE) - self.fee(TRADING_POST_LISTING_FEE),
+        }
+    }
+    /// Has an error of at most 1 copper too high (could have broken even at one copper less)
+    pub fn trading_post_listing_price(self) -> Money {
+        Money {
+            copper: cmp::max(
+                (self.copper * Rational32u::new(100, 100 - TRADING_POST_LISTING_FEE - TRADING_POST_EXCHANGE_FEE)).ceil(),
+                self.copper + 2,
+            ),
+        }
+    }
+    /// This will probably not be precise due to rounding errors accumulating as sales are broken
+    /// into smaller batches. Would need to calculate this per sale chunk to be precise - but then
+    /// the TP sometimes glitches w/small sale volumes, requiring filling them multiple times
+    /// anyway, reintroducing rounding errors.
+    pub fn increase_by_listing_fee(self) -> Money {
+        Money {
+            copper: self.copper + self.fee(TRADING_POST_LISTING_FEE),
         }
     }
 
@@ -152,5 +164,50 @@ impl std::iter::Sum for Money {
             sink.copper += src.copper;
         }
         sink
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sale_revenue() {
+        // NOTE: all prices verified in game; game subtracts listing fee from
+        // cash and exchange fee from revenue.
+        let prices = vec![
+            (2, 0),
+            (6, 4), (6 * 2, 10), (6 * 3, 15),
+            (51, 43),
+            (68, 58),
+        ];
+        for (sell, revenue) in prices {
+            assert_eq!(
+                revenue,
+                Money::from_copper(sell)
+                    .trading_post_sale_revenue()
+                    .to_copper_value()
+            );
+        }
+    }
+
+    #[test]
+    fn listing_price() {
+        let epsilon = Money::from_copper(1);
+        // Bunch of arbitrary primes
+        let values = vec![
+            1, 2, 3, 17, 31, 37, 47, 53, 71, 101, 137,
+            3499, 9431,
+            100673, 199799,
+            1385507,
+            24710753,
+        ];
+        for value in values {
+            let price = Money::from_copper(value);
+            let breakeven = Money::from_copper(
+                price.trading_post_listing_price().to_copper_value()
+            ).trading_post_sale_revenue();
+            assert!(price <= breakeven && breakeven <= price + epsilon);
+        }
     }
 }
