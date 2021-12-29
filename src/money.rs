@@ -27,7 +27,7 @@ impl Money {
         }
     }
     pub fn to_copper_value(self) -> u32 {
-        self.copper.to_integer()
+        self.copper.ceil().to_integer()
     }
 
     fn fee(&self, percent: u32) -> Rational32u {
@@ -35,8 +35,9 @@ impl Money {
     }
 
     pub fn trading_post_sale_revenue(self) -> Money {
+        let fees = self.fee(TRADING_POST_EXCHANGE_FEE) + self.fee(TRADING_POST_LISTING_FEE);
         Money {
-            copper: self.copper - self.fee(TRADING_POST_EXCHANGE_FEE) - self.fee(TRADING_POST_LISTING_FEE),
+            copper: if self.copper > fees { self.copper - fees } else { 0.into() },
         }
     }
     /// Has an error of at most 1 copper too high (could have broken even at one copper less)

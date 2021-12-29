@@ -350,23 +350,6 @@ impl Item {
             _ => None,
         }
     }
-
-    #[cfg(test)]
-    pub(crate) fn mock(id: u32, name: &str, vendor_value: u32) -> Self {
-        Item {
-            id,
-            name: name.to_string(),
-            vendor_value,
-            item_type: ItemType::Armor,
-            rarity: ItemRarity::Junk,
-            level: 0,
-            flags: vec![],
-            restrictions: vec![],
-            upgrades_into: None,
-            upgrades_from: None,
-            details: None,
-        }
-    }
 }
 
 // When printing an item, add rarity if a trinket, as most trinkets use the same

@@ -686,25 +686,6 @@ impl Recipe {
             || self.output_item_id == 79817  // Dragon Hatchling Doll Frame
             || self.output_item_id == 43772 // Charged Quartz Crystal
     }
-
-    #[cfg(test)]
-    pub(crate) fn mock<const A: usize>(
-        id: u32,
-        output_item_id: u32,
-        output_item_count: u32,
-        disciplines: [config::Discipline; A],
-        ingredients: &[api::RecipeIngredient],
-        source: RecipeSource,
-    ) -> Self {
-        Recipe {
-            id: Some(id),
-            output_item_id,
-            output_item_count,
-            disciplines: disciplines.to_vec(),
-            ingredients: ingredients.to_vec(),
-            source,
-        }
-    }
 }
 
 trait OptionInnerMin<T> {

@@ -1,11 +1,97 @@
-use crate::{
+use gw2_arbitrage::{
     api::{self, Item, ItemListings, Listing, RecipeIngredient},
     config::Discipline,
-    crafting::{self, PurchasedIngredient, Recipe, RecipeSource},
+    crafting::{self, PurchasedIngredient, Recipe},
     money::Money,
 };
 
 use std::collections::{HashMap, HashSet};
+
+trait MockItem {
+    fn mock(id: u32, name: &str, vendor_value: u32) -> Self;
+}
+impl MockItem for Item {
+    fn mock(id: u32, name: &str, vendor_value: u32) -> Self {
+        serde_json::from_str(
+            format!(
+                "{{
+                    \"id\": {},
+                    \"name\": \"{}\",
+                    \"vendor_value\": {},
+                    \"type\": \"Armor\",
+                    \"rarity\": \"Junk\",
+                    \"level\": 0,
+                    \"flags\": [],
+                    \"restrictions\": []
+                }}",
+                id, name, vendor_value
+            )
+            .as_str(),
+        )
+        .unwrap()
+    }
+}
+
+trait MockRecipe {
+    fn mock<const A: usize>(
+        id: u32,
+        output_item_id: u32,
+        output_item_count: u32,
+        disciplines: [Discipline; A],
+        ingredients: &[RecipeIngredient],
+        automatic: bool,
+    ) -> Self;
+}
+impl MockRecipe for Recipe {
+    fn mock<const A: usize>(
+        id: u32,
+        output_item_id: u32,
+        output_item_count: u32,
+        disciplines: [Discipline; A],
+        ingredients: &[RecipeIngredient],
+        automatic: bool,
+    ) -> Self {
+        let mut recipe: api::Recipe = serde_json::from_str(
+            format!(
+                "{{
+                    \"id\": {},
+                    \"output_item_id\": {},
+                    \"output_item_count\": {},
+                    \"time_to_craft_ms\": 0,
+                    \"disciplines\": [],
+                    \"min_rating\": 0,
+                    \"flags\": {},
+                    \"ingredients\": []
+                }}",
+                id,
+                output_item_id,
+                output_item_count,
+                if automatic {
+                    "[\"AutoLearned\"]"
+                } else {
+                    "[\"LearnedFromItem\"]"
+                }
+            )
+            .as_str(),
+        )
+        .unwrap();
+        recipe.disciplines = disciplines.to_vec();
+        recipe.ingredients = ingredients.to_vec();
+        recipe.into()
+    }
+}
+
+// TODO: in main code, calculate revenue based on selling to buy order volume,
+// instead of one at at time. On the upside - this will always be <= true revenue
+fn calc_revenue(buys: Vec<(u32, u32)>) -> Money {
+    buys.iter()
+        .map(|(count, price)| {
+            (0..*count)
+                .map(|_| Money::from_copper(*price).trading_post_sale_revenue())
+                .sum()
+        })
+        .sum()
+}
 
 #[test]
 fn calculate_crafting_profit_agony_infusion_unprofitable_test() {
@@ -107,7 +193,10 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
         purchased_ingredients,
         vec![
             (
-                (thermocatalytic_reagent_item_id, crafting::Source::TradingPost),
+                (
+                    thermocatalytic_reagent_item_id,
+                    crafting::Source::TradingPost
+                ),
                 PurchasedIngredient {
                     count: 2,
                     min_price: Money::from_copper(120),
@@ -140,7 +229,9 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
     // and the average cost for two items is lower than from the vendor.
     // ideally only one reagent would be purchased from the tp, but that would introduce complexity.
     let thermocatalytic_reagent_crafting_cost = (120 + 178) + 4 * 150;
-    let crafting_cost = Money::from_copper(800000 + 2 * 1000000 + 5 * 1100000 + thermocatalytic_reagent_crafting_cost);
+    let crafting_cost = Money::from_copper(
+        800000 + 2 * 1000000 + 5 * 1100000 + thermocatalytic_reagent_crafting_cost,
+    );
     assert_eq!(
         profitable_item,
         Some(crafting::ProfitableItem {
@@ -186,7 +277,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
                     count: 1,
                 },
             ],
-            RecipeSource::Automatic,
+            true,
         ),
     );
 
@@ -226,14 +317,21 @@ fn calculate_crafting_profit_with_output_item_count_test() {
             crafting_cost,
             crafting_steps: 1,
             count: 98,
-            profit: Money::from_copper(200 + 199 * 50 + 198 * 47).trading_post_sale_revenue()
-                - crafting_cost,
+            profit: calc_revenue(vec![(47, 198), (50, 199), (1, 200)]) - crafting_cost,
             unknown_recipes: Default::default(),
             max_sell: Money::from_copper(200),
             min_sell: Money::from_copper(198),
-            // ((43 + 90 + 92) / 98) / (85/100)
-            breakeven: Money::from_copper(3),
+            breakeven: profitable_item.as_ref().unwrap().breakeven, // inexact, test below
         })
+    );
+    assert_eq!(
+        profitable_item
+            .as_ref()
+            .unwrap()
+            .breakeven
+            .to_copper_value(),
+        // ((43 + 90 + 92) / 98) / (85/100); min of 2 copper added, rounded up
+        5
     );
 
     recipes_map.get_mut(&item_id).unwrap().output_item_count = 3;
@@ -254,8 +352,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
             crafting_cost,
             crafting_steps: 32,
             count: 96,
-            profit: Money::from_copper(200 + 199 * 50 + 198 * 45).trading_post_sale_revenue()
-                - crafting_cost,
+            profit: calc_revenue(vec![(45, 198), (50, 199), (1, 200)]) - crafting_cost,
             unknown_recipes: Default::default(),
             max_sell: Money::from_copper(200),
             min_sell: Money::from_copper(198),
@@ -372,7 +469,7 @@ fn calculate_crafting_profit_unknown_recipe_test() {
                             count: 1,
                         })
                         .collect::<Vec<_>>(),
-                    RecipeSource::Purchasable,
+                    false,
                 ),
             );
         }
@@ -426,6 +523,93 @@ fn calculate_crafting_profit_unknown_recipe_test() {
     );
 }
 
+#[test]
+fn calculate_crafting_profit_with_subitem_leftovers() {
+    let mut items_map = HashMap::new();
+    items_map.insert(1000, Item::mock(1000, "Output Item", 0));
+    items_map.insert(2000, Item::mock(2000, "Ingredient 1", 0));
+    items_map.insert(2100, Item::mock(2010, "Ingredient 2", 0));
+    items_map.insert(2110, Item::mock(2010, "Sub-ingredient 1", 0));
+
+    let mut recipes_map = HashMap::new();
+    recipes_map.insert(
+        1000,
+        Recipe::mock(
+            300,
+            1000,
+            1,
+            [],
+            &[
+                RecipeIngredient {
+                    item_id: 2000,
+                    count: 2,
+                },
+                RecipeIngredient {
+                    item_id: 2100,
+                    count: 1,
+                },
+            ],
+            true,
+        ),
+    );
+    recipes_map.insert(
+        2100,
+        Recipe::mock(
+            301,
+            2100,
+            5,
+            [],
+            &[RecipeIngredient {
+                item_id: 2110,
+                count: 1,
+            }],
+            true,
+        ),
+    );
+
+    let tp_listings_map = tp_listings_map(vec![
+        (1000, vec![(100, 100), (155, 50), (200, 1)], vec![]),
+        (2000, vec![], vec![(50, 100), (30, 10), (25, 1)]), // needs 2
+        (2100, vec![(100, 30)], vec![(31, 100), (21, 11), (15, 1)]),
+        (2110, vec![], vec![(150, 20), (125, 6), (100, 1)]), // 30, 25, 20 per crafted 2100
+    ]);
+
+    let mut purchased_ingredients = HashMap::new();
+    let profitable_item = crafting::calculate_crafting_profit(
+        1000,
+        &recipes_map,
+        &None,
+        &items_map,
+        &tp_listings_map,
+        Some(&mut purchased_ingredients),
+        &Default::default(),
+    );
+    let crafting_cost = Money::from_copper(
+        (15 + 25 + 30) // 1
+        + (30 * 8 + 4 * 20) // +4 = 5
+        + (30 + 50 + 20) // +1 = 6
+        + (50 * 2 * 11 + 21 * 11) // +11 = 17
+        + (50 * 2 * 30 + 25 * 5 * 6) // +30 = 47
+        + (50 * 2 * 4 + 30 * 4), // +34 = 51
+                                 // One leftover, not profitable at 100
+    );
+    assert_eq!(
+        profitable_item,
+        Some(crafting::ProfitableItem {
+            id: 1000,
+            crafting_cost,
+            crafting_steps: 51, // TODO: wrong, should be 51 + 8
+            count: 51,
+            profit: Money::from_copper(200 + 155 * 50).trading_post_sale_revenue() - crafting_cost,
+            unknown_recipes: Default::default(),
+            max_sell: Money::from_copper(200),
+            min_sell: Money::from_copper(150),
+            // (50 * 2 + 30) / (85/100)
+            breakeven: Money::from_copper(153),
+        })
+    );
+}
+
 fn tp_listings_map(
     from: Vec<(u32, Vec<(u32, u32)>, Vec<(u32, u32)>)>,
 ) -> HashMap<u32, ItemListings> {
@@ -475,7 +659,13 @@ mod data {
 
         let mut items_map = HashMap::new();
         items_map.insert(46747, Item::mock(46747, "Thermocatalytic Reagent", 80));
-        items_map.insert(49424, Item::mock(49424, "+1 Agony Infusion", 330));
+        for (id, bonus) in (49424..=49439).zip(1..=16) {
+            items_map.insert(
+                id,
+                Item::mock(id, format!("+{} Agony Infusion", bonus).as_str(), 330),
+            );
+        }
+        /*
         items_map.insert(49425, Item::mock(49425, "+2 Agony Infusion", 330));
         items_map.insert(49426, Item::mock(49426, "+3 Agony Infusion", 330));
         items_map.insert(49427, Item::mock(49427, "+4 Agony Infusion", 330));
@@ -491,308 +681,31 @@ mod data {
         items_map.insert(49437, Item::mock(49437, "+14 Agony Infusion", 330));
         items_map.insert(49438, Item::mock(49438, "+15 Agony Infusion", 330));
         items_map.insert(49439, Item::mock(49439, "+16 Agony Infusion", 330));
+            */
 
         let mut recipes_map = HashMap::new();
-        recipes_map.insert(
-            49425,
-            Recipe::mock(
-                7851,
-                49425,
-                1,
-                [Discipline::Artificer],
-                &[
-                    RecipeIngredient {
-                        item_id: 49424,
-                        count: 2,
-                    },
-                    RecipeIngredient {
-                        item_id: 46747,
-                        count: 1,
-                    },
-                ],
-                RecipeSource::Automatic,
-            ),
-        );
-        recipes_map.insert(
-            49426,
-            Recipe::mock(
-                7852,
-                49426,
-                1,
-                [Discipline::Artificer],
-                &[
-                    RecipeIngredient {
-                        item_id: 49425,
-                        count: 2,
-                    },
-                    RecipeIngredient {
-                        item_id: 46747,
-                        count: 1,
-                    },
-                ],
-                RecipeSource::Automatic,
-            ),
-        );
-        recipes_map.insert(
-            49427,
-            Recipe::mock(
-                7853,
-                49427,
-                1,
-                [Discipline::Artificer],
-                &[
-                    RecipeIngredient {
-                        item_id: 49426,
-                        count: 2,
-                    },
-                    RecipeIngredient {
-                        item_id: 46747,
-                        count: 1,
-                    },
-                ],
-                RecipeSource::Automatic,
-            ),
-        );
-        recipes_map.insert(
-            49428,
-            Recipe::mock(
-                7854,
-                49428,
-                1,
-                [Discipline::Artificer],
-                &[
-                    RecipeIngredient {
-                        item_id: 49427,
-                        count: 2,
-                    },
-                    RecipeIngredient {
-                        item_id: 46747,
-                        count: 1,
-                    },
-                ],
-                RecipeSource::Automatic,
-            ),
-        );
-        recipes_map.insert(
-            49429,
-            Recipe::mock(
-                7855,
-                49429,
-                1,
-                [Discipline::Artificer],
-                &[
-                    RecipeIngredient {
-                        item_id: 49428,
-                        count: 2,
-                    },
-                    RecipeIngredient {
-                        item_id: 46747,
-                        count: 1,
-                    },
-                ],
-                RecipeSource::Automatic,
-            ),
-        );
-        recipes_map.insert(
-            49430,
-            Recipe::mock(
-                7856,
-                49430,
-                1,
-                [Discipline::Artificer],
-                &[
-                    RecipeIngredient {
-                        item_id: 49429,
-                        count: 2,
-                    },
-                    RecipeIngredient {
-                        item_id: 46747,
-                        count: 1,
-                    },
-                ],
-                RecipeSource::Automatic,
-            ),
-        );
-        recipes_map.insert(
-            49431,
-            Recipe::mock(
-                7857,
-                49431,
-                1,
-                [Discipline::Artificer],
-                &[
-                    RecipeIngredient {
-                        item_id: 49430,
-                        count: 2,
-                    },
-                    RecipeIngredient {
-                        item_id: 46747,
-                        count: 1,
-                    },
-                ],
-                RecipeSource::Automatic,
-            ),
-        );
-        recipes_map.insert(
-            49432,
-            Recipe::mock(
-                7858,
-                49432,
-                1,
-                [Discipline::Artificer],
-                &[
-                    RecipeIngredient {
-                        item_id: 49431,
-                        count: 2,
-                    },
-                    RecipeIngredient {
-                        item_id: 46747,
-                        count: 1,
-                    },
-                ],
-                RecipeSource::Automatic,
-            ),
-        );
-        recipes_map.insert(
-            49433,
-            Recipe::mock(
-                7859,
-                49433,
-                1,
-                [Discipline::Artificer],
-                &[
-                    RecipeIngredient {
-                        item_id: 49432,
-                        count: 2,
-                    },
-                    RecipeIngredient {
-                        item_id: 46747,
-                        count: 1,
-                    },
-                ],
-                RecipeSource::Automatic,
-            ),
-        );
-        recipes_map.insert(
-            49434,
-            Recipe::mock(
-                7860,
-                49434,
-                1,
-                [Discipline::Artificer],
-                &[
-                    RecipeIngredient {
-                        item_id: 49433,
-                        count: 2,
-                    },
-                    RecipeIngredient {
-                        item_id: 46747,
-                        count: 1,
-                    },
-                ],
-                RecipeSource::Automatic,
-            ),
-        );
-        recipes_map.insert(
-            49435,
-            Recipe::mock(
-                7861,
-                49435,
-                1,
-                [Discipline::Artificer],
-                &[
-                    RecipeIngredient {
-                        item_id: 49434,
-                        count: 2,
-                    },
-                    RecipeIngredient {
-                        item_id: 46747,
-                        count: 1,
-                    },
-                ],
-                RecipeSource::Automatic,
-            ),
-        );
-        recipes_map.insert(
-            49436,
-            Recipe::mock(
-                7862,
-                49436,
-                1,
-                [Discipline::Artificer],
-                &[
-                    RecipeIngredient {
-                        item_id: 49435,
-                        count: 2,
-                    },
-                    RecipeIngredient {
-                        item_id: 46747,
-                        count: 1,
-                    },
-                ],
-                RecipeSource::Automatic,
-            ),
-        );
-        recipes_map.insert(
-            49437,
-            Recipe::mock(
-                7863,
-                49437,
-                1,
-                [Discipline::Artificer],
-                &[
-                    RecipeIngredient {
-                        item_id: 49436,
-                        count: 2,
-                    },
-                    RecipeIngredient {
-                        item_id: 46747,
-                        count: 1,
-                    },
-                ],
-                RecipeSource::Automatic,
-            ),
-        );
-        recipes_map.insert(
-            49438,
-            Recipe::mock(
-                7864,
-                49438,
-                1,
-                [Discipline::Artificer],
-                &[
-                    RecipeIngredient {
-                        item_id: 49437,
-                        count: 2,
-                    },
-                    RecipeIngredient {
-                        item_id: 46747,
-                        count: 1,
-                    },
-                ],
-                RecipeSource::Automatic,
-            ),
-        );
-        recipes_map.insert(
-            49439,
-            Recipe::mock(
-                7865,
-                49439,
-                1,
-                [Discipline::Artificer],
-                &[
-                    RecipeIngredient {
-                        item_id: 49438,
-                        count: 2,
-                    },
-                    RecipeIngredient {
-                        item_id: 46747,
-                        count: 1,
-                    },
-                ],
-                RecipeSource::Automatic,
-            ),
-        );
+        for (id, recipe_id) in (49425..=49439).zip(7851..=7865) {
+            recipes_map.insert(
+                id,
+                Recipe::mock(
+                    recipe_id,
+                    id,
+                    1,
+                    [Discipline::Artificer],
+                    &[
+                        RecipeIngredient {
+                            item_id: id - 1,
+                            count: 2,
+                        },
+                        RecipeIngredient {
+                            item_id: 46747,
+                            count: 1,
+                        },
+                    ],
+                    true,
+                ),
+            );
+        }
 
         let mut tp_listings_map = HashMap::new();
         tp_listings_map.insert(

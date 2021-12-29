@@ -5,14 +5,7 @@ use serde::Serialize;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
-mod api;
-mod config;
-mod crafting;
-mod gw2efficiency;
-mod request;
-mod money;
-#[cfg(test)]
-mod tests;
+use gw2_arbitrage::*;
 
 use config::CONFIG;
 use money::Money;
