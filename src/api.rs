@@ -6,7 +6,7 @@ use strum::Display;
 
 use crate::config;
 use config::CONFIG;
-use crate::money;
+use crate::money::Money;
 
 
 // types for /commerce/prices
@@ -304,17 +304,17 @@ static VENDOR_ITEMS_CUSTOM_PRICE: phf::Map<u32, u32> = phf_map! {
     90201_u32 => 40000, // Smell-Enhancing Culture; prereq achievement
 };
 impl Item {
-    pub fn vendor_cost(&self) -> Option<money::Money> {
+    pub fn vendor_cost(&self) -> Option<Money> {
         if VENDOR_ITEMS.contains(&self.id) {
             if self.vendor_value > 0 {
                 // standard vendor sell price is generally buy price * 8, see:
                 //  https://forum-en.gw2archive.eu/forum/community/api/How-to-get-the-vendor-sell-price
-                Some(money::Money::from_copper(self.vendor_value * 8))
+                Some(Money::from_copper(self.vendor_value * 8))
             } else {
                 None
             }
         } else if VENDOR_ITEMS_CUSTOM_PRICE.contains_key(&self.id) {
-            Some(money::Money::from_copper(VENDOR_ITEMS_CUSTOM_PRICE[&self.id]))
+            Some(Money::from_copper(VENDOR_ITEMS_CUSTOM_PRICE[&self.id]))
         } else {
             None
         }
