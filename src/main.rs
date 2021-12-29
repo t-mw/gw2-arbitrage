@@ -15,6 +15,7 @@ mod money;
 mod tests;
 
 use config::CONFIG;
+use money::Money;
 
 const ITEM_STACK_SIZE: u32 = 250; // GW2 uses a "stack size" of 250
 
@@ -354,7 +355,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &tp_prices_map,
             &CONFIG.crafting,
         ) {
-            let effective_buy_price = money::Money::from_copper(tp_prices.buys.unit_price)
+            let effective_buy_price = Money::from_copper(tp_prices.buys.unit_price)
                 .trading_post_sale_revenue();
             if effective_buy_price > crafting_cost {
                 profitable_item_ids.push(*item_id);
@@ -528,7 +529,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", header);
     println!("{}", "=".repeat(header.len()));
 
-    let total_profit: money::Money = profitable_items.iter().map(|item| item.profit).sum();
+    let total_profit: Money = profitable_items.iter().map(|item| item.profit).sum();
     println!("Total: {}", total_profit);
 
     if let Some(writer) = &mut csv_writer {

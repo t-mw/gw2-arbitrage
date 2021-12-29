@@ -1,7 +1,7 @@
 use crate::api;
 use crate::gw2efficiency;
 use crate::config;
-use crate::money;
+use crate::money::Money;
 
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +13,7 @@ use std::convert::TryFrom;
 
 #[derive(Debug, Copy, Clone)]
 pub struct EstimatedCraftingCost {
-    pub cost: money::Money,
+    pub cost: Money,
     pub source: Source,
 }
 
@@ -34,7 +34,7 @@ pub fn calculate_estimated_min_crafting_cost(
         if !opt.include_timegated && recipe.is_timegated() {
             None
         } else {
-            let mut cost = money::Money::zero();
+            let mut cost = Money::zero();
             for ingredient in &recipe.ingredients {
                 let ingredient_cost = calculate_estimated_min_crafting_cost(
                     ingredient.item_id,
@@ -62,11 +62,11 @@ pub fn calculate_estimated_min_crafting_cost(
     let tp_cost = tp_prices_map
         .get(&item_id)
         .filter(|price| price.sells.quantity > 0)
-        .map(|price| money::Money::from_copper(price.sells.unit_price));
+        .map(|price| Money::from_copper(price.sells.unit_price));
 
     let vendor_cost = item.and_then(|item| {
         if opt.include_ascended && item.is_common_ascended_material() {
-            Some(money::Money::zero())
+            Some(Money::zero())
         } else {
             item.vendor_cost()
         }
@@ -87,7 +87,7 @@ pub fn calculate_estimated_min_crafting_cost(
 
 #[derive(Debug, Copy, Clone)]
 struct PreciseCraftingCost {
-    cost: money::Money,
+    cost: Money,
     source: Source,
 }
 
@@ -95,7 +95,7 @@ struct PreciseCraftingCostContext {
     purchases: Vec<(u32, u32, Source)>,
     crafted: Vec<u32>,
     crafting_steps: u32,
-    leftovers: HashMap<u32, (u32, money::Money)>,
+    leftovers: HashMap<u32, (u32, Money)>,
 }
 
 // Calculate the lowest cost method to obtain the given item, with simulated purchases from
@@ -142,7 +142,7 @@ fn calculate_precise_min_crafting_cost(
             }
         }
     } else {
-        (item_count, money::Money::zero())
+        (item_count, Money::zero())
     };
 
     // Craft x, but stash the rest; price is the fraction though
@@ -151,7 +151,7 @@ fn calculate_precise_min_crafting_cost(
             return None
         }
 
-        let mut cost = money::Money::zero();
+        let mut cost = Money::zero();
         for ingredient in &recipe.ingredients {
             // adjust ingredient count based on fraction of parent recipe that was requested
             let ingredient_count = Ratio::new(ingredient.count * item_count, output_item_count).ceil().to_integer();
@@ -181,11 +181,11 @@ fn calculate_precise_min_crafting_cost(
     let tp_cost = tp_listings_map
         .get(&item_id)
         .and_then(|listings| listings.lowest_sell_offer(item_count))
-        .and_then(|offer| Some(money::Money::from_copper(offer)));
+        .and_then(|offer| Some(Money::from_copper(offer)));
 
     let vendor_cost = item.and_then(|item| {
         if opt.include_ascended && item.is_common_ascended_material() {
-            Some(money::Money::zero())
+            Some(Money::zero())
         } else {
             item.vendor_cost()
                 .map(|cost| cost * item_count)
@@ -259,10 +259,10 @@ pub fn calculate_crafting_profit(
 
     let recipe = recipes_map.get(&item_id);
     let output_item_count = recipe.map(|recipe| recipe.output_item_count).unwrap_or(1);
-    let threshold = money::Money::from_copper(opt.threshold.unwrap_or(0));
+    let threshold = Money::from_copper(opt.threshold.unwrap_or(0));
 
-    let mut listing_profit = money::Money::zero();
-    let mut total_crafting_cost = money::Money::zero();
+    let mut listing_profit = Money::zero();
+    let mut total_crafting_cost = Money::zero();
     let mut crafting_count = 0;
     let mut total_crafting_steps = 0;
     let mut unknown_recipes = HashSet::new();
@@ -274,7 +274,7 @@ pub fn calculate_crafting_profit(
         .buys
         .last()
         .map_or(0, |l| l.unit_price);
-    let mut breakeven = money::Money::zero();
+    let mut breakeven = Money::zero();
 
     // simulate crafting 1 item per loop iteration until it becomes unprofitable
     loop {
@@ -309,7 +309,7 @@ pub fn calculate_crafting_profit(
         };
 
         let (buy_price, min_buy) = if let Some(price) = opt.value {
-            (money::Money::from_copper(price), price)
+            (Money::from_copper(price), price)
         } else if let Some((buy_price, min_buy)) = tp_listings_map
             .get_mut(&item_id)
             .unwrap_or_else(|| panic!("Missing listings for item id: {}", item_id))
@@ -386,16 +386,16 @@ pub fn calculate_crafting_profit(
                     .entry((*purchase_id, *purchase_source))
                     .or_insert_with(|| PurchasedIngredient {
                         count: 0,
-                        max_price: money::Money::default(),
-                        min_price: money::Money::default(),
-                        total_cost: money::Money::default(),
+                        max_price: Money::default(),
+                        min_price: Money::default(),
+                        total_cost: Money::default(),
                     });
                 ingredient.count += count;
                 if ingredient.min_price.is_zero() {
-                    ingredient.min_price = money::Money::from_copper(min_sell);
+                    ingredient.min_price = Money::from_copper(min_sell);
                 }
-                ingredient.max_price = money::Money::from_copper(max_sell);
-                ingredient.total_cost += money::Money::from_copper(cost);
+                ingredient.max_price = Money::from_copper(max_sell);
+                ingredient.total_cost += Money::from_copper(cost);
             }
         }
         debug_assert!(tp_listings_map
@@ -413,8 +413,8 @@ pub fn calculate_crafting_profit(
             profit: listing_profit,
             count: crafting_count,
             unknown_recipes,
-            max_sell: money::Money::from_copper(max_sell),
-            min_sell: money::Money::from_copper(min_sell),
+            max_sell: Money::from_copper(max_sell),
+            min_sell: Money::from_copper(min_sell),
             breakeven: breakeven.trading_post_listing_price(),
         })
     } else {
@@ -425,30 +425,30 @@ pub fn calculate_crafting_profit(
 #[derive(Debug, Eq, PartialEq)]
 pub struct PurchasedIngredient {
     pub count: u32,
-    pub max_price: money::Money,
-    pub min_price: money::Money,
-    pub total_cost: money::Money,
+    pub max_price: Money,
+    pub min_price: Money,
+    pub total_cost: Money,
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct ProfitableItem {
     pub id: u32,
-    pub crafting_cost: money::Money,
+    pub crafting_cost: Money,
     pub crafting_steps: u32,
     pub count: u32,
-    pub profit: money::Money,
+    pub profit: Money,
     pub unknown_recipes: HashSet<u32>, // id
-    pub max_sell: money::Money,
-    pub min_sell: money::Money,
-    pub breakeven: money::Money,
+    pub max_sell: Money,
+    pub min_sell: Money,
+    pub breakeven: Money,
 }
 
 impl ProfitableItem {
-    pub fn profit_per_item(&self) -> money::Money {
+    pub fn profit_per_item(&self) -> Money {
         self.profit / self.count
     }
 
-    pub fn profit_per_crafting_step(&self) -> money::Money {
+    pub fn profit_per_crafting_step(&self) -> Money {
         self.profit / self.crafting_steps
     }
 
@@ -500,8 +500,8 @@ impl ItemListings {
         Some((cost, min_sell, max_sell))
     }
 
-    fn sell(&mut self, mut count: u32) -> Option<(money::Money, u32)> {
-        let mut revenue = money::Money::zero();
+    fn sell(&mut self, mut count: u32) -> Option<(Money, u32)> {
+        let mut revenue = Money::zero();
         let mut min_buy = 0;
 
         while count > 0 {
@@ -510,7 +510,7 @@ impl ItemListings {
                 listing.quantity -= 1;
                 count -= 1;
                 min_buy = listing.unit_price;
-                revenue += money::Money::from_copper(listing.unit_price).trading_post_sale_revenue();
+                revenue += Money::from_copper(listing.unit_price).trading_post_sale_revenue();
                 listing.quantity.is_zero()
             } else {
                 return None;
