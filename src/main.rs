@@ -296,6 +296,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
 
+        if !profitable_item.leftovers.is_empty() {
+            println!("Leftovers:");
+            // count name, breakeven: y
+            for (leftover_id, (count, cost)) in profitable_item.leftovers.iter() {
+                println!(
+                    "{} {}, breakeven: {} each",
+                    count,
+                    items_map
+                        .get(&leftover_id)
+                        .map_or_else(|| "???".to_string(), |item| item.to_string()),
+                    cost.trading_post_listing_price(),
+                );
+            }
+        }
+
         return Ok(());
     }
 

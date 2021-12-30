@@ -246,6 +246,7 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
             min_sell: Money::from_copper(7982200),
             // (1100000 * 4 + 3 * 150) / (85 / 100)
             breakeven: Money::from_copper(5177000),
+            leftovers: Default::default(),
         })
     );
 }
@@ -322,6 +323,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
             max_sell: Money::from_copper(200),
             min_sell: Money::from_copper(198),
             breakeven: profitable_item.as_ref().unwrap().breakeven, // inexact, test below
+            leftovers: Default::default(),
         })
     );
     assert_eq!(
@@ -358,6 +360,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
             min_sell: Money::from_copper(198),
             // ((2*94 + 45) / 3) / (85/100)
             breakeven: Money::from_copper(92),
+            leftovers: Default::default(),
         })
     );
 }
@@ -590,22 +593,25 @@ fn calculate_crafting_profit_with_subitem_leftovers() {
         + (30 + 50 + 20) // +1 = 6
         + (50 * 2 * 11 + 21 * 11) // +11 = 17
         + (50 * 2 * 30 + 25 * 5 * 6) // +30 = 47
-        + (50 * 2 * 4 + 30 * 4), // +34 = 51
-                                 // One leftover, not profitable at 100
+        + (50 * 2 * 4 + 30 * 4), // +4 = 51
     );
+    // One leftover, not profitable at 100
+    let mut leftovers: HashMap<u32, (u32, Money)> = HashMap::new();
+    leftovers.insert(2100, (1, Money::from_copper(30)));
     assert_eq!(
         profitable_item,
         Some(crafting::ProfitableItem {
             id: 1000,
             crafting_cost,
-            crafting_steps: 51, // TODO: wrong, should be 51 + 8
+            crafting_steps: 59,
             count: 51,
-            profit: Money::from_copper(200 + 155 * 50).trading_post_sale_revenue() - crafting_cost,
+            profit: calc_revenue(vec![(50, 155), (1, 200)]) - crafting_cost,
             unknown_recipes: Default::default(),
             max_sell: Money::from_copper(200),
-            min_sell: Money::from_copper(150),
+            min_sell: Money::from_copper(155),
             // (50 * 2 + 30) / (85/100)
             breakeven: Money::from_copper(153),
+            leftovers,
         })
     );
 }
