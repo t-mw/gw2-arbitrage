@@ -146,7 +146,10 @@ fn calculate_precise_min_crafting_cost(
     };
 
     // Craft x, but stash the rest; price is the fraction though
-    let crafting_cost = recipe.and_then(|recipe| {
+    let crafting_count = Ratio::new(item_count, output_item_count).ceil().to_integer();
+    let output_count = crafting_count * output_item_count;
+
+    let crafting_cost_per_item = recipe.and_then(|recipe| {
         if !opt.include_timegated && recipe.is_timegated() {
             return None
         }
@@ -154,7 +157,7 @@ fn calculate_precise_min_crafting_cost(
         let mut cost = Money::zero();
         for ingredient in &recipe.ingredients {
             // adjust ingredient count based on fraction of parent recipe that was requested
-            let ingredient_count = Ratio::new(ingredient.count * item_count, output_item_count).ceil().to_integer();
+            let ingredient_count = ingredient.count * crafting_count;
             let ingredient_cost = calculate_precise_min_crafting_cost(
                 ingredient.item_id,
                 ingredient_count,
@@ -175,8 +178,14 @@ fn calculate_precise_min_crafting_cost(
             }
         }
 
-        Some(cost)
+        // scale to per item
+        Some(cost / output_count)
     });
+    let crafting_cost = if let Some(cost) = crafting_cost_per_item {
+        Some(cost * item_count)
+    } else {
+        None
+    };
 
     let tp_cost = tp_listings_map
         .get(&item_id)
@@ -204,6 +213,11 @@ fn calculate_precise_min_crafting_cost(
 
     if source == Source::Crafting {
         context.crafted.push(item_id);
+        if output_count > item_count {
+            // Should never have leftovers if we're crafting more
+            debug_assert!(context.leftovers.get(&item_id) == None);
+            context.leftovers.insert(item_id, (output_count - item_count, crafting_cost_per_item.unwrap()));
+        }
         context.crafting_steps += Ratio::new(item_count, output_item_count).ceil().to_integer();
     } else {
         // Un-mark ingredients for purchase
@@ -266,6 +280,7 @@ pub fn calculate_crafting_profit(
     let mut crafting_count = 0;
     let mut total_crafting_steps = 0;
     let mut unknown_recipes = HashSet::new();
+    let mut leftovers = HashMap::new();
 
     let mut min_sell = 0;
     let max_sell = tp_listings_map
@@ -288,7 +303,7 @@ pub fn calculate_crafting_profit(
             purchases: vec![],
             crafted: vec![],
             crafting_steps: 0,
-            leftovers: HashMap::new(),
+            leftovers: leftovers.clone(),
         };
 
         let crafting_cost = if let Some(PreciseCraftingCost {
@@ -308,6 +323,7 @@ pub fn calculate_crafting_profit(
             break;
         };
 
+
         let (buy_price, min_buy) = if let Some(price) = opt.value {
             (Money::from_copper(price), price)
         } else if let Some((buy_price, min_buy)) = tp_listings_map
@@ -321,17 +337,18 @@ pub fn calculate_crafting_profit(
         };
 
         // Ensure buy_price is larger before subtracting cost for profit
-        if buy_price >= crafting_cost + threshold {
-            listing_profit += buy_price - crafting_cost;
-            total_crafting_cost += crafting_cost;
-            crafting_count += output_item_count;
-
-            min_sell = min_buy;
-            // Breakeven is based on the last/most expensive to craft
-            breakeven = crafting_cost / output_item_count;
-        } else {
+        if buy_price < crafting_cost + threshold {
             break;
         }
+
+        listing_profit += buy_price - crafting_cost;
+        total_crafting_cost += crafting_cost;
+        crafting_count += output_item_count;
+        leftovers = context.leftovers;
+
+        min_sell = min_buy;
+        // Breakeven is based on the last/most expensive to craft
+        breakeven = crafting_cost / output_item_count;
 
         for item_id in &context.crafted {
             let recipe = if let Some(recipe) = recipes_map.get(item_id) {
@@ -416,6 +433,7 @@ pub fn calculate_crafting_profit(
             max_sell: Money::from_copper(max_sell),
             min_sell: Money::from_copper(min_sell),
             breakeven: breakeven.trading_post_listing_price(),
+            leftovers,
         })
     } else {
         None
@@ -441,6 +459,7 @@ pub struct ProfitableItem {
     pub max_sell: Money,
     pub min_sell: Money,
     pub breakeven: Money,
+    pub leftovers: HashMap<u32, (u32, Money)>,
 }
 
 impl ProfitableItem {
