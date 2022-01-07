@@ -11,6 +11,13 @@ use num_traits::Zero;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 
+#[derive(Debug, Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum Source {
+    Crafting,
+    TradingPost,
+    Vendor,
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct EstimatedCraftingCost {
     pub cost: Money,
@@ -85,6 +92,8 @@ pub fn calculate_estimated_min_crafting_cost(
     Some(EstimatedCraftingCost { cost, source })
 }
 
+// Exact
+
 #[derive(Debug, Copy, Clone)]
 struct PreciseCraftingCost {
     cost: Money,
@@ -92,10 +101,65 @@ struct PreciseCraftingCost {
 }
 
 struct PreciseCraftingCostContext {
-    purchases: Vec<(u32, u32, Source)>,
-    crafted: Vec<u32>,
-    crafting_steps: u32,
-    leftovers: HashMap<u32, (u32, Money)>,
+    purchases: Vec<(u32, u32, Source)>, // id, count, Source
+    items: CraftedItems,
+}
+
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
+pub struct CraftedItems {
+    pub crafted: HashMap<u32, u32>, // id, count
+    pub leftovers: HashMap<u32, (u32, Money)>,
+}
+
+impl CraftedItems {
+    fn crafting_steps(
+        &self,
+        recipes_map: &HashMap<u32, Recipe>,
+    ) -> Ratio<u32> {
+        let total_crafting_steps = self.crafted.iter().map(|(item_id, &count)| {
+            let recipe = recipes_map.get(item_id);
+            let output_item_count = recipe.map(|recipe| recipe.output_item_count).unwrap_or(1);
+            Ratio::new(count, output_item_count)
+        }).reduce(|total, count| total + count).unwrap();
+        debug_assert!(total_crafting_steps.is_integer());
+        total_crafting_steps
+    }
+
+    pub fn unknown_recipes(
+        &self,
+        recipes_map: &HashMap<u32, Recipe>,
+        known_recipes: &Option<HashSet<u32>>,
+    ) -> HashSet<u32> {
+        let mut unknown_recipes = HashSet::new();
+        for item_id in self.crafted.keys() {
+            let recipe = if let Some(recipe) = recipes_map.get(item_id) {
+                recipe
+            } else {
+                continue;
+            };
+            if let Some(id) = recipe.id.filter(|id| !unknown_recipes.contains(id)) {
+                match recipe.source {
+                    RecipeSource::Purchasable | RecipeSource::Achievement => {
+                        // If we have no known recipes, assume we know none
+                        if known_recipes
+                            .as_ref()
+                            .filter(|recipes| recipes.contains(&id))
+                            .is_none()
+                        {
+                            unknown_recipes.insert(id);
+                        }
+                    }
+                    // These aren't included in the API; assume you know them
+                    RecipeSource::Automatic | RecipeSource::Discoverable => {
+                        // TODO: instead, check if account has a char with the required crafting level
+                        // Would require a key with the characters scope. Still wouldn't detect
+                        // discoverable recipes, but would detect access to them
+                    }
+                }
+            }
+        }
+        unknown_recipes
+    }
 }
 
 // Calculate the lowest cost method to obtain the given item, with simulated purchases from
@@ -114,27 +178,26 @@ fn calculate_precise_min_crafting_cost(
     let output_item_count = recipe.map(|recipe| recipe.output_item_count).unwrap_or(1);
 
     let purchases_ptr = context.purchases.len();
-    let crafted_ptr = context.crafted.len();
-    let crafting_steps_before = context.crafting_steps;
+    let crafted_backup = context.items.crafted.clone();
 
     // Take from leftovers first if any
-    let (item_count, cost_of_leftovers_used) = if let Some((count, cost)) = context.leftovers.remove(&item_id) {
+    let (item_count, cost_of_leftovers_used) = if let Some((count, cost)) = context.items.leftovers.remove(&item_id) {
         match count.cmp(&item_count) {
             std::cmp::Ordering::Less => {
                 // Source is only checked against crafting to break out of profit loop; so prefer
                 // whichever other source
-                context.leftovers.remove(&item_id);
+                context.items.leftovers.remove(&item_id);
                 (item_count - count, cost * count)
             },
             std::cmp::Ordering::Equal => {
-                context.leftovers.remove(&item_id);
+                context.items.leftovers.remove(&item_id);
                 return Some(PreciseCraftingCost {
                     cost: cost * item_count,
                     source: Source::Crafting,
                 })
             }
             std::cmp::Ordering::Greater => {
-                context.leftovers.insert(item_id, (count - item_count, cost));
+                context.items.leftovers.insert(item_id, (count - item_count, cost));
                 return Some(PreciseCraftingCost {
                     cost: cost * item_count,
                     source: Source::Crafting,
@@ -212,13 +275,12 @@ fn calculate_precise_min_crafting_cost(
     };
 
     if source == Source::Crafting {
-        context.crafted.push(item_id);
+        *context.items.crafted.entry(item_id).or_insert(0) += output_count;
         if output_count > item_count {
             // Should never have leftovers if we're crafting more
-            debug_assert!(context.leftovers.get(&item_id) == None);
-            context.leftovers.insert(item_id, (output_count - item_count, crafting_cost_per_item.unwrap()));
+            debug_assert!(context.items.leftovers.get(&item_id) == None);
+            context.items.leftovers.insert(item_id, (output_count - item_count, crafting_cost_per_item.unwrap()));
         }
-        context.crafting_steps += Ratio::new(item_count, output_item_count).ceil().to_integer();
     } else {
         // Un-mark ingredients for purchase
         for (purchase_id, purchase_quantity, purchase_source) in
@@ -231,8 +293,7 @@ fn calculate_precise_min_crafting_cost(
                     .pending_buy_quantity -= purchase_quantity;
             }
         }
-        context.crafted.drain(crafted_ptr..);
-        context.crafting_steps = crafting_steps_before;
+        context.items.crafted = crafted_backup;
     }
 
     // Mark for purchase
@@ -249,17 +310,9 @@ fn calculate_precise_min_crafting_cost(
     Some(PreciseCraftingCost { cost: cost + cost_of_leftovers_used, source })
 }
 
-#[derive(Debug, Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum Source {
-    Crafting,
-    TradingPost,
-    Vendor,
-}
-
 pub fn calculate_crafting_profit(
     item_id: u32,
     recipes_map: &HashMap<u32, Recipe>,
-    known_recipes: &Option<HashSet<u32>>,
     items_map: &HashMap<u32, api::Item>,
     tp_listings_map: &HashMap<u32, api::ItemListings>,
     mut purchased_ingredients: Option<&mut HashMap<(u32, Source), PurchasedIngredient>>,
@@ -278,9 +331,7 @@ pub fn calculate_crafting_profit(
     let mut listing_profit = Money::zero();
     let mut total_crafting_cost = Money::zero();
     let mut crafting_count = 0;
-    let mut total_crafting_steps = 0;
-    let mut unknown_recipes = HashSet::new();
-    let mut leftovers = HashMap::new();
+    let mut crafted_items = CraftedItems::default();
 
     let mut min_sell = 0;
     let max_sell = tp_listings_map
@@ -301,9 +352,7 @@ pub fn calculate_crafting_profit(
 
         let mut context = PreciseCraftingCostContext {
             purchases: vec![],
-            crafted: vec![],
-            crafting_steps: 0,
-            leftovers: leftovers.clone(),
+            items: crafted_items.clone(),
         };
 
         let crafting_cost = if let Some(PreciseCraftingCost {
@@ -344,40 +393,13 @@ pub fn calculate_crafting_profit(
         listing_profit += buy_price - crafting_cost;
         total_crafting_cost += crafting_cost;
         crafting_count += output_item_count;
-        leftovers = context.leftovers;
+        crafted_items = context.items;
 
         min_sell = min_buy;
         // Breakeven is based on the last/most expensive to craft
         breakeven = crafting_cost / output_item_count;
 
-        for item_id in &context.crafted {
-            let recipe = if let Some(recipe) = recipes_map.get(item_id) {
-                recipe
-            } else {
-                continue;
-            };
-            if let Some(id) = recipe.id.filter(|id| !unknown_recipes.contains(id)) {
-                match recipe.source {
-                    RecipeSource::Purchasable | RecipeSource::Achievement => {
-                        // If we have no known recipes, assume we know none
-                        if known_recipes
-                            .as_ref()
-                            .filter(|recipes| recipes.contains(&id))
-                            .is_none()
-                        {
-                            unknown_recipes.insert(id);
-                        }
-                    }
-                    // These aren't included in the API; assume you know them
-                    RecipeSource::Automatic | RecipeSource::Discoverable => {
-                        // TODO: instead, check if account has a char with the required crafting level
-                        // Would require a key with the characters scope. Still wouldn't detect
-                        // discoverable recipes, but would detect access to them
-                    }
-                }
-            }
-        }
-
+        // Finalize purchases
         for (purchase_id, count, purchase_source) in &context.purchases {
             let (cost, min_sell, max_sell) = if let Source::TradingPost = *purchase_source {
                 let listing = tp_listings_map.get_mut(purchase_id).unwrap_or_else(|| {
@@ -419,21 +441,19 @@ pub fn calculate_crafting_profit(
             .iter()
             .all(|(_, listing)| listing.pending_buy_quantity == 0));
 
-        total_crafting_steps += context.crafting_steps;
     }
 
     if crafting_count > 0 && !listing_profit.is_zero() {
         Some(ProfitableItem {
             id: item_id,
             crafting_cost: total_crafting_cost,
-            crafting_steps: total_crafting_steps,
             profit: listing_profit,
             count: crafting_count,
-            unknown_recipes,
             max_sell: Money::from_copper(max_sell),
             min_sell: Money::from_copper(min_sell),
             breakeven: breakeven.trading_post_listing_price(),
-            leftovers,
+            crafting_steps: crafted_items.crafting_steps(recipes_map).to_integer(),
+            crafted_items,
         })
     } else {
         None
@@ -452,14 +472,13 @@ pub struct PurchasedIngredient {
 pub struct ProfitableItem {
     pub id: u32,
     pub crafting_cost: Money,
-    pub crafting_steps: u32,
     pub count: u32,
     pub profit: Money,
-    pub unknown_recipes: HashSet<u32>, // id
     pub max_sell: Money,
     pub min_sell: Money,
     pub breakeven: Money,
-    pub leftovers: HashMap<u32, (u32, Money)>,
+    pub crafting_steps: u32,
+    pub crafted_items: CraftedItems,
 }
 
 impl ProfitableItem {
