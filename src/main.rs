@@ -120,7 +120,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let profitable_item = crafting::calculate_crafting_profit(
             item_id,
             &recipes_map,
-            &known_recipes,
             &items_map,
             &tp_listings_map,
             Some(&mut purchased_ingredients),
@@ -256,7 +255,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         let unknown_recipes: Vec<u32> = profitable_item
-            .unknown_recipes
+            .crafted_items
+            .unknown_recipes(&recipes_map, &known_recipes)
             .iter()
             .map(|&id| id)
             .collect();
@@ -296,10 +296,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
 
-        if !profitable_item.leftovers.is_empty() {
+        let leftovers = profitable_item.crafted_items.leftovers;
+        if !leftovers.is_empty() {
             println!("Leftovers:");
-            // count name, breakeven: y
-            for (leftover_id, (count, cost)) in profitable_item.leftovers.iter() {
+            for (leftover_id, (count, cost)) in leftovers.iter() {
                 println!(
                     "{} {}, breakeven: {} each",
                     count,
@@ -403,7 +403,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             crafting::calculate_crafting_profit(
                 *item_id,
                 &recipes_map,
-                &known_recipes,
                 &items_map,
                 &tp_listings_map_for_item,
                 None,
@@ -484,7 +483,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .join("/"),
             item_id,
             unknown_recipes: profitable_item
-                .unknown_recipes
+                .crafted_items
+                .unknown_recipes(&recipes_map, &known_recipes)
                 .iter()
                 .map(|&id| id)
                 .collect(),

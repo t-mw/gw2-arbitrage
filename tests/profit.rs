@@ -1,7 +1,7 @@
 use gw2_arbitrage::{
     api::{self, Item, ItemListings, Listing, RecipeIngredient},
     config::Discipline,
-    crafting::{self, PurchasedIngredient, Recipe},
+    crafting::{self, PurchasedIngredient, Recipe, CraftedItems},
     money::Money,
 };
 
@@ -105,7 +105,6 @@ fn calculate_crafting_profit_agony_infusion_unprofitable_test() {
     let profitable_item = crafting::calculate_crafting_profit(
         item_id,
         &recipes_map,
-        &None,
         &items_map,
         &tp_listings_map,
         None,
@@ -180,7 +179,6 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
     let profitable_item = crafting::calculate_crafting_profit(
         plus_16_item_id,
         &recipes_map,
-        &None,
         &items_map,
         &tp_listings_map,
         Some(&mut purchased_ingredients),
@@ -232,21 +230,26 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
     let crafting_cost = Money::from_copper(
         800000 + 2 * 1000000 + 5 * 1100000 + thermocatalytic_reagent_crafting_cost,
     );
+    let mut crafted = HashMap::new();
+    crafted.insert(plus_14_item_id + 1, 4);
+    crafted.insert(plus_16_item_id, 2);
     assert_eq!(
         profitable_item,
         Some(crafting::ProfitableItem {
             id: plus_16_item_id,
             crafting_cost,
-            crafting_steps: 6,
             count: 2,
             profit: Money::from_copper(7982220 + 7982200).trading_post_sale_revenue()
                 - crafting_cost,
-            unknown_recipes: Default::default(),
             max_sell: Money::from_copper(7982220),
             min_sell: Money::from_copper(7982200),
             // (1100000 * 4 + 3 * 150) / (85 / 100)
             breakeven: Money::from_copper(5177000),
-            leftovers: Default::default(),
+            crafting_steps: 6,
+            crafted_items: CraftedItems {
+                crafted,
+                leftovers: Default::default(),
+            },
         })
     );
 }
@@ -292,7 +295,6 @@ fn calculate_crafting_profit_with_output_item_count_test() {
     let profitable_item = crafting::calculate_crafting_profit(
         item_id,
         &recipes_map,
-        &None,
         &items_map,
         &tp_listings_map,
         None,
@@ -304,26 +306,29 @@ fn calculate_crafting_profit_with_output_item_count_test() {
     let profitable_item = crafting::calculate_crafting_profit(
         item_id,
         &recipes_map,
-        &None,
         &items_map,
         &tp_listings_map,
         None,
         &Default::default(),
     );
     let crafting_cost = Money::from_copper(43 + 90 + 92);
+    let mut crafted = HashMap::new();
+    crafted.insert(item_id, 98);
     assert_eq!(
         profitable_item,
         Some(crafting::ProfitableItem {
             id: item_id,
             crafting_cost,
-            crafting_steps: 1,
             count: 98,
             profit: calc_revenue(vec![(47, 198), (50, 199), (1, 200)]) - crafting_cost,
-            unknown_recipes: Default::default(),
             max_sell: Money::from_copper(200),
             min_sell: Money::from_copper(198),
             breakeven: profitable_item.as_ref().unwrap().breakeven, // inexact, test below
-            leftovers: Default::default(),
+            crafting_steps: 1,
+            crafted_items: CraftedItems {
+                crafted,
+                leftovers: Default::default(),
+            },
         })
     );
     assert_eq!(
@@ -340,27 +345,30 @@ fn calculate_crafting_profit_with_output_item_count_test() {
     let profitable_item = crafting::calculate_crafting_profit(
         item_id,
         &recipes_map,
-        &None,
         &items_map,
         &tp_listings_map,
         None,
         &Default::default(),
     );
     let crafting_cost = Money::from_copper(43 + 45 * 31 + 90 + 92 * 33 + 94 * 30);
+    let mut crafted = HashMap::new();
+    crafted.insert(item_id, 96);
     assert_eq!(
         profitable_item,
         Some(crafting::ProfitableItem {
             id: item_id,
             crafting_cost,
-            crafting_steps: 32,
             count: 96,
             profit: calc_revenue(vec![(45, 198), (50, 199), (1, 200)]) - crafting_cost,
-            unknown_recipes: Default::default(),
             max_sell: Money::from_copper(200),
             min_sell: Money::from_copper(198),
             // ((2*94 + 45) / 3) / (85/100)
             breakeven: Money::from_copper(92),
-            leftovers: Default::default(),
+            crafting_steps: 32,
+            crafted_items: CraftedItems {
+                crafted,
+                leftovers: Default::default(),
+            },
         })
     );
 }
@@ -505,7 +513,6 @@ fn calculate_crafting_profit_unknown_recipe_test() {
     let profitable_item = crafting::calculate_crafting_profit(
         main_item.id,
         &recipes_map,
-        &Some(known_recipes),
         &items_map,
         &tp_listings_map(tp_listings),
         Some(&mut purchased_ingredients),
@@ -521,7 +528,7 @@ fn calculate_crafting_profit_unknown_recipe_test() {
         expected_purchased_ingredients
     );
     assert_eq!(
-        profitable_item.unwrap().unknown_recipes,
+        profitable_item.unwrap().crafted_items.unknown_recipes(&recipes_map, &Some(known_recipes)),
         expected_unknown_recipes
     );
 }
@@ -581,14 +588,13 @@ fn calculate_crafting_profit_with_subitem_leftovers() {
     let profitable_item = crafting::calculate_crafting_profit(
         1000,
         &recipes_map,
-        &None,
         &items_map,
         &tp_listings_map,
         Some(&mut purchased_ingredients),
         &Default::default(),
     );
     let crafting_cost = Money::from_copper(
-        (15 + 25 + 30) // 1
+        (25 + 30 + 15) // 1
         + (30 * 8 + 4 * 20) // +4 = 5
         + (30 + 50 + 20) // +1 = 6
         + (50 * 2 * 11 + 21 * 11) // +11 = 17
@@ -598,20 +604,25 @@ fn calculate_crafting_profit_with_subitem_leftovers() {
     // One leftover, not profitable at 100
     let mut leftovers: HashMap<u32, (u32, Money)> = HashMap::new();
     leftovers.insert(2100, (1, Money::from_copper(30)));
+    let mut crafted = HashMap::new();
+    crafted.insert(1000, 51);
+    crafted.insert(2100, 40);
     assert_eq!(
         profitable_item,
         Some(crafting::ProfitableItem {
             id: 1000,
             crafting_cost,
-            crafting_steps: 59,
             count: 51,
             profit: calc_revenue(vec![(50, 155), (1, 200)]) - crafting_cost,
-            unknown_recipes: Default::default(),
             max_sell: Money::from_copper(200),
             min_sell: Money::from_copper(155),
             // (50 * 2 + 30) / (85/100)
             breakeven: Money::from_copper(153),
-            leftovers,
+            crafting_steps: 59,
+            crafted_items: CraftedItems {
+                crafted,
+                leftovers,
+            },
         })
     );
 }
