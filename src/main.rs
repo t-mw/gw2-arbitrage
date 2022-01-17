@@ -253,6 +253,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Crafting steps: https://gw2efficiency.com/crafting/calculator/a~1!b~1!c~1!d~{}-{}",
             profitable_item.count, item_id
         );
+        for (item_id, count, recipe) in profitable_item.crafted_items.sorted(item_id, &recipes_map) {
+            let item_name = items_map
+                .get(&item_id)
+                .map_or_else(|| "???".to_string(), |item| item.to_string());
+            // TODO: we want _these_ well ordered as well...
+            let ingredients = recipe.ingredients.iter().map(|ingredient| {
+                let ingredient_name = items_map
+                    .get(&ingredient.item_id)
+                    .map_or_else(|| "???".to_string(), |item| item.to_string());
+                format!("{} {}", ingredient.count * count, ingredient_name)
+            }).collect::<Vec<String>>().join(" ");
+            if recipe.output_item_count > 1 {
+                println!("{} (makes {}) {} from {}", count / recipe.output_item_count, count, item_name, ingredients);
+            } else {
+                println!("{} {} from {}", count, item_name, ingredients);
+            }
+        }
 
         let unknown_recipes: Vec<u32> = profitable_item
             .crafted_items

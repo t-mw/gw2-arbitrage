@@ -160,6 +160,61 @@ impl CraftedItems {
         }
         unknown_recipes
     }
+
+    /// Sort in the order which will remove ingredients from the inventory fastest
+    fn sort_ingredients<'a>(
+        &self,
+        item_id: u32,
+        count: u32,
+        used: &mut HashMap<u32, u32>,
+        recipes_map: &'a HashMap<u32, Recipe>
+    ) -> (u32, Vec<(u32, u32, &'a Recipe)>) {
+        let mut ingredients = Vec::new();
+        let recipe = recipes_map.get(&item_id).unwrap();
+        for ingredient in &recipe.ingredients {
+            let crafted = self.crafted.get(&ingredient.item_id).unwrap_or(&0);
+            let used_count = used.entry(ingredient.item_id).or_insert(0);
+            if crafted <= used_count {
+                continue;
+            }
+            *used_count += count;
+            ingredients.push((
+                ingredient.item_id, count * ingredient.count,
+                self.sort_ingredients(
+                    ingredient.item_id, count * ingredient.count,
+                    used, &recipes_map
+                ),
+            ));
+        }
+
+        // Some MF recipes have the same item/count repeated
+        ingredients.sort_by(|a, b| {
+            if a.1 == b.1 {
+                b.0.cmp(&a.0)
+            } else {
+                b.1.cmp(&a.1)
+            }
+        });
+
+        let mut sorted = Vec::new();
+        let mut sum = 0;
+        for subcomponent in ingredients.iter() {
+            sum += subcomponent.2.0;
+            sorted.extend(subcomponent.2.1.iter());
+        }
+        sorted.push((item_id, count, recipe));
+        (sum, sorted)
+    }
+
+    // TODO: use an iterator? - complains about lifetimes though, despite copy data output w/o references
+    // TODO: unwrap??
+    // TODO: not yet handling multiple subcomponents using same items!
+    pub fn sorted<'a>(&self, item_id: u32, recipes_map: &'a HashMap<u32, Recipe>) -> Vec<(u32, u32, &'a Recipe)> {
+        self.sort_ingredients(
+            item_id, *self.crafted.get(&item_id).unwrap(),
+            &mut HashMap::new(), recipes_map
+        ).1
+    }
 }
 
 // Calculate the lowest cost method to obtain the given item, with simulated purchases from
