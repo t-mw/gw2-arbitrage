@@ -166,24 +166,20 @@ impl CraftedItems {
         &self,
         item_id: u32,
         count: u32,
-        used: &mut HashMap<u32, u32>,
         recipes_map: &'a HashMap<u32, Recipe>
     ) -> (u32, Vec<(u32, u32, &'a Recipe)>) {
         let mut ingredients = Vec::new();
         let recipe = recipes_map.get(&item_id).unwrap();
         for ingredient in &recipe.ingredients {
             let crafted = self.crafted.get(&ingredient.item_id).unwrap_or(&0);
-            let used_count = used.entry(ingredient.item_id).or_insert(0);
-            if crafted <= used_count {
+            if *crafted <= 0 {
                 continue;
             }
-            *used_count += count;
+            // Let each recipe which uses something get full credit for it; then
+            // only add it once to the crafting list once weights are determined
             ingredients.push((
-                ingredient.item_id, count * ingredient.count,
-                self.sort_ingredients(
-                    ingredient.item_id, count * ingredient.count,
-                    used, &recipes_map
-                ),
+                ingredient.item_id, *crafted,
+                self.sort_ingredients(ingredient.item_id, *crafted, &recipes_map),
             ));
         }
 
@@ -198,9 +194,16 @@ impl CraftedItems {
 
         let mut sorted = Vec::new();
         let mut sum = 0;
-        for subcomponent in ingredients.iter() {
-            sum += subcomponent.2.0;
-            sorted.extend(subcomponent.2.1.iter());
+        let mut used = HashSet::new();
+        for ingredient in ingredients.iter() {
+            sum += ingredient.2.0;
+            for &subingredient in ingredient.2.1.iter() {
+                if used.contains(&subingredient.0) {
+                    continue;
+                }
+                used.insert(subingredient.0);
+                sorted.push(subingredient);
+            }
         }
         sorted.push((item_id, count, recipe));
         (sum, sorted)
@@ -208,12 +211,8 @@ impl CraftedItems {
 
     // TODO: use an iterator? - complains about lifetimes though, despite copy data output w/o references
     // TODO: unwrap??
-    // TODO: not yet handling multiple subcomponents using same items!
     pub fn sorted<'a>(&self, item_id: u32, recipes_map: &'a HashMap<u32, Recipe>) -> Vec<(u32, u32, &'a Recipe)> {
-        self.sort_ingredients(
-            item_id, *self.crafted.get(&item_id).unwrap(),
-            &mut HashMap::new(), recipes_map
-        ).1
+        self.sort_ingredients(item_id, *self.crafted.get(&item_id).unwrap(), recipes_map).1
     }
 }
 
