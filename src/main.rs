@@ -20,9 +20,9 @@ struct OutputRow {
     unknown_recipes: Vec<u32>,
     total_profit: String,
     number_required: u32,
-    profit_per_item: u32,
+    profit_per_item: i32,
     crafting_steps: u32,
-    profit_per_step: u32,
+    profit_per_step: i32,
     profit_on_cost: f64,
 }
 
@@ -380,7 +380,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &tp_prices_map,
             &CONFIG.crafting,
         ) {
-            let effective_buy_price = Money::from_copper(tp_prices.buys.unit_price)
+            let effective_buy_price = Money::from_copper(tp_prices.buys.unit_price as i32)
                 .trading_post_sale_revenue();
             if effective_buy_price > crafting_cost {
                 profitable_item_ids.push(*item_id);

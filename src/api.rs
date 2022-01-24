@@ -309,14 +309,55 @@ impl Item {
             if self.vendor_value > 0 {
                 // standard vendor sell price is generally buy price * 8, see:
                 //  https://forum-en.gw2archive.eu/forum/community/api/How-to-get-the-vendor-sell-price
-                Some(Money::from_copper(self.vendor_value * 8))
+                Some(Money::from_copper((self.vendor_value * 8) as i32))
             } else {
                 None
             }
         } else if VENDOR_ITEMS_CUSTOM_PRICE.contains_key(&self.id) {
-            Some(Money::from_copper(VENDOR_ITEMS_CUSTOM_PRICE[&self.id]))
+            Some(Money::from_copper(VENDOR_ITEMS_CUSTOM_PRICE[&self.id] as i32))
         } else {
             None
+        }
+    }
+
+    // Account Bound Tokens
+    pub fn token_value(&self) -> Option<Money> {
+        match &self.id {
+            // LW1
+            // 50025 Blade Shard
+            50025 => Some(Money::from_copper(0)),
+            // LW3
+            // 79280 Blood Ruby
+            // 79469 Petrified Wood
+            // 80332 Jade Shard
+            // 81127 Fire Orchid Blossom
+            79280 | 79469 | 80332 | 81127 if CONFIG.um != None => Some(Money::from_um(38)),
+            // 79899 Fresh Winterberry
+            // 81706 Orrian Pearl
+            79899 | 81706 if CONFIG.um != None => Some(Money::from_um(19)),
+            // LW4
+            // 86977 Difluorite Crystal
+            // 87645 Inscribed Shard
+            // 88955 Lump of Mistonium
+            // 89537 Branded Mass
+            // 90783 Mistborn Mote
+            86069 | 86977 | 87645 | 88955 | 90783 if CONFIG.vm != None => Some(Money::from_vm(20)),
+            // 86069 Kralkatite Ore
+            89537 if CONFIG.vm != None => Some(Money::from_vm(4)),
+            // Icebrood Saga
+            // 92072 Hatched Chili
+            92072 => Some(Money::from_copper(0)),
+            // 92272 Eternal Ice Shard
+            92272 if CONFIG.vm != None && CONFIG.karma != None => {
+                // Can convert 75 into 10 tokens worth 20 VM each for 2688 karma
+                let value = Money::new(0, -2688, 0, 200) / 75;
+                if value.to_copper_value() >= 0 {
+                    Some(value)
+                } else {
+                    None
+                }
+            },
+            _ => None,
         }
     }
 
