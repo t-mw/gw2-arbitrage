@@ -1,7 +1,6 @@
 use serde::{de, Deserialize, Deserializer, Serialize};
 use std::fmt;
 
-use phf::{phf_map, phf_set};
 use strum::Display;
 
 use crate::config;
@@ -264,65 +263,78 @@ pub enum ItemConsumableType {
     TeleportToFriend,
 }
 
-// NOTE: most can only be purchased in blocks of 10 - we ignore that for now
-// NOTE: doesn't include karma purchases, since the karma to gold rate is undefined and we don't
-// support multiple currencies
-static VENDOR_ITEMS: phf::Set<u32> = phf_set! {
-    19792_u32, // Spool of Jute Thread - 10
-    19789_u32, // Spool of Wool Thread - 10
-    19794_u32, // Spool of Cotton Thread - 10
-    19793_u32, // Spool of Linen Thread - 10
-    19791_u32, // Spool of Silk Thread - 10
-    19790_u32, // Spool of Gossamer Thread - 10
-    13010_u32, // Minor Rune of Holding
-    13006_u32, // Rune of Holding
-    13007_u32, // Major Rune of Holding
-    13008_u32, // Greater Rune of Holding
-    13009_u32, // Superior Rune of Holding
-    19704_u32, // Lump of Tin - 10
-    19750_u32, // Lump of Coal - 10
-    19924_u32, // Lump of Primordium - 10
-    12157_u32, // Jar of Vinegar - 10
-    12151_u32, // Packet of Baking Powder - 10
-    12158_u32, // Jar of Vegetable Oil - 10
-    12153_u32, // Packet of Salt - 10
-    12155_u32, // Bag of Sugar - 10
-    12156_u32, // Jug of Water - 10 - only 10?
-    12324_u32, // Bag of Starch - 10
-    12136_u32, // Bag of Flour - 1, from some vendors, 10 from master chefs
-    12271_u32, // Bottle of Soy Sauce - 10
-    76839_u32, // Milling Basin - can buy one at a time from chefs and scribe
-    70647_u32, // Crystalline Bottle - can buy one at a time from master scribe
-    75762_u32, // Bag of Mortar - can buy one at a time from master scribe
-    75087_u32, // Essence of Elegance - buy one at a time
-};
-// Sell price is _not_ buy price * 8
-static VENDOR_ITEMS_CUSTOM_PRICE: phf::Map<u32, u32> = phf_map! {
-    46747_u32 => 150, // Thermocatalytic Reagent - 1496 for 10
-    91739_u32 => 150, // Pile of Compost Starter - 1496 for 10
-    91702_u32 => 200, // Pile of Powdered Gelatin Mix - 5 for 1000; prereq achievement
-    90201_u32 => 40000, // Smell-Enhancing Culture; prereq achievement
-};
 impl Item {
-    pub fn vendor_cost(&self) -> Option<Money> {
-        if VENDOR_ITEMS.contains(&self.id) {
-            if self.vendor_value > 0 {
-                // standard vendor sell price is generally buy price * 8, see:
-                //  https://forum-en.gw2archive.eu/forum/community/api/How-to-get-the-vendor-sell-price
-                Some(Money::from_copper((self.vendor_value * 8) as i32))
-            } else {
-                None
-            }
-        } else if VENDOR_ITEMS_CUSTOM_PRICE.contains_key(&self.id) {
-            Some(Money::from_copper(VENDOR_ITEMS_CUSTOM_PRICE[&self.id] as i32))
-        } else {
-            None
+    // Output is cost per item, min purchase count
+    pub fn vendor_cost(&self) -> Option<(Money, u32)> {
+        // standard vendor sell price is generally buy price * 8, see:
+        // https://forum-en.gw2archive.eu/forum/community/api/How-to-get-the-vendor-sell-price
+        match &self.id {
+            // Standard vendor sell price
+
+            // Singular
+            76839 | // Milling Basin
+            70647 | // Crystalline Bottle
+            75762 | // Bag of Mortar
+            75087 | // Essence of Elegance
+            12136 | // Bag of Flour - 1, from some vendors, 10 from master chefs
+            // Rune of Holding: Minor, Regular, Major, Greater, Superior
+            13010 | 13006 | 13007 | 13008 | 13009
+                => Some((Money::from_copper((self.vendor_value * 8) as i32), 1)),
+            // 10s
+            19792 | // Spool of Jute Thread
+            19789 | // Spool of Wool Thread
+            19794 | // Spool of Cotton Thread
+            19793 | // Spool of Linen Thread
+            19791 | // Spool of Silk Thread
+            19790 | // Spool of Gossamer Thread
+            19704 | // Lump of Tin
+            19750 | // Lump of Coal
+            19924 | // Lump of Primordium
+            12157 | // Jar of Vinegar
+            12151 | // Packet of Baking Powder
+            12158 | // Jar of Vegetable Oil
+            12153 | // Packet of Salt
+            12155 | // Bag of Sugar
+            12156 | // Jug of Water
+            12324 | // Bag of Starch
+            12271   // Bottle of Soy Sauce
+                // Price is already scaled per item
+                => Some((Money::from_copper((self.vendor_value * 8) as i32), 10)),
+
+            // Custom Price
+
+            46747 => Some((Money::from_copper(1496) / 10, 10)), // Thermocatalytic Reagent
+            91739 => Some((Money::from_copper(1496) / 10, 10)), // Pile of Compost Starter
+            91702 => Some((Money::from_copper(1000) / 5, 5)), // Pile of Powdered Gelatin Mix; prereq achievement
+            90201 => Some((Money::from_copper(40000), 1)), // Smell-Enhancing Culture; prereq achievement
+
+            // Karma Ingredients - Bulk package item ids
+
+            // Apples, Buttermilk, Celery Stalks, Cheese Wedges, Cumin, Green Beans, Lemons, Nutmeg
+            // Seeds, Tomatoes, Yeast
+            12788 | 12801 | 12790 | 12802 | 12793 | 12794 | 12795 | 12796 | 12798 | 12804
+                => Some((Money::from_karma(35), 1)),
+            // Bananas, Basil Leaves, Bell Peppers, Black Beans, Kidney Beans, Rice
+            12773 | 12774 | 12776 | 12777 | 12778 | 12780 => Some((Money::from_karma(49), 1)),
+            // Almonds, Avocados, Cherries, Ginger Root, Limes, Sour Cream
+            12765 | 12766 | 12767 | 12768 | 12769 | 12764 => Some((Money::from_karma(77), 1)),
+            // Chickpeas, Coconuts, Horseradish Root, Pears, Pinenuts, Shallots
+            12781 | 12782 | 12783 | 12785 | 12786 | 12787 => Some((Money::from_karma(112), 1)),
+            // Eggplants, Peaches
+            12770 | 12771 => Some((Money::from_karma(154), 1)),
+            // Mangos
+            12772 => Some((Money::from_karma(203), 1)),
+
+            _ => None,
         }
     }
 
     // Account Bound Tokens
     pub fn token_value(&self) -> Option<Money> {
         match &self.id {
+            // Base game
+            // Empyreal Fragment, Dragonite Ore, Pile of Bloodstone Dust
+            46735 | 46733 | 46731 if CONFIG.ascended != None => Some(Money::from_copper(CONFIG.ascended.unwrap() as i32)),
             // LW1
             // 50025 Blade Shard
             50025 => Some(Money::from_copper(0)),
@@ -368,11 +380,6 @@ impl Item {
                 .flags
                 .iter()
                 .any(|flag| *flag == ItemFlag::AccountBound || *flag == ItemFlag::SoulbindOnAcquire)
-    }
-
-    pub fn is_common_ascended_material(&self) -> bool {
-        // Empyreal Fragment, Dragonite Ore, Pile of Bloodstone Dust
-        self.id == 46735 || self.id == 46733 || self.id == 46731
     }
 
     pub fn recipe_unlocks(&self) -> Option<Vec<u32>> {

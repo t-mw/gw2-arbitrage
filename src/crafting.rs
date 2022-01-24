@@ -62,7 +62,7 @@ pub fn calculate_estimated_min_crafting_cost(
                 }
             }
 
-            Some(cost.div_i32_ceil(output_item_count as i32))
+            Some(cost / output_item_count)
         }
     });
 
@@ -72,11 +72,7 @@ pub fn calculate_estimated_min_crafting_cost(
         .map(|price| Money::from_copper(price.sells.unit_price as i32));
 
     let vendor_cost = item.and_then(|item| {
-        if opt.include_ascended && item.is_common_ascended_material() {
-            Some(Money::zero())
-        } else {
-            item.vendor_cost().or_else(|| item.token_value())
-        }
+        item.vendor_cost().map_or_else(|| item.token_value(), |cost| Some(cost.0))
     });
     let cost = tp_cost.inner_min(crafting_cost).inner_min(vendor_cost)?;
 
@@ -108,7 +104,7 @@ struct PreciseCraftingCostContext {
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct CraftedItems {
     pub crafted: HashMap<u32, u32>, // id, count
-    pub leftovers: HashMap<u32, (u32, Money)>,
+    pub leftovers: HashMap<u32, (u32, Money, Source)>,
 }
 
 impl CraftedItems {
@@ -235,26 +231,24 @@ fn calculate_precise_min_crafting_cost(
     let crafted_backup = context.items.crafted.clone();
 
     // Take from leftovers first if any
-    let (item_count, cost_of_leftovers_used) = if let Some((count, cost)) = context.items.leftovers.remove(&item_id) {
+    let (item_count, cost_of_leftovers_used) = if let Some((count, cost, source)) = context.items.leftovers.remove(&item_id) {
         match count.cmp(&item_count) {
             std::cmp::Ordering::Less => {
                 // Source is only checked against crafting to break out of profit loop; so prefer
                 // whichever other source
-                context.items.leftovers.remove(&item_id);
                 (item_count - count, cost * count)
             },
             std::cmp::Ordering::Equal => {
-                context.items.leftovers.remove(&item_id);
                 return Some(PreciseCraftingCost {
                     cost: cost * item_count,
-                    source: Source::Crafting,
+                    source,
                 })
             }
             std::cmp::Ordering::Greater => {
-                context.items.leftovers.insert(item_id, (count - item_count, cost));
+                context.items.leftovers.insert(item_id, (count - item_count, cost, source));
                 return Some(PreciseCraftingCost {
                     cost: cost * item_count,
-                    source: Source::Crafting,
+                    source,
                 })
             }
         }
@@ -266,6 +260,7 @@ fn calculate_precise_min_crafting_cost(
     let crafting_count = Ratio::new(item_count, output_item_count).ceil().to_integer();
     let output_count = crafting_count * output_item_count;
 
+    let leftovers_backup = context.items.leftovers.clone();
     let crafting_cost_per_item = recipe.and_then(|recipe| {
         if !opt.include_timegated && recipe.is_timegated() {
             return None
@@ -309,15 +304,16 @@ fn calculate_precise_min_crafting_cost(
         .and_then(|listings| listings.lowest_sell_offer(item_count))
         .and_then(|offer| Some(Money::from_copper(offer as i32)));
 
-    let vendor_cost = item.and_then(|item| {
-        if opt.include_ascended && item.is_common_ascended_material() {
-            Some(Money::zero())
-        } else {
-            item.vendor_cost()
-                .or_else(|| item.token_value())
-                .map(|cost| cost * item_count)
-        }
+    let vendor_data = item.and_then(|item| {
+        item.vendor_cost()
+            .or_else(|| item.token_value().map(|v| (v, 0)))
+            .map(|cost| (cost.0 * item_count, cost.1))
     });
+    let vendor_cost = if let Some((cost, _)) = vendor_data {
+        Some(cost)
+    } else {
+        None
+    };
     let cost = tp_cost.inner_min(crafting_cost).inner_min(vendor_cost)?;
 
     // give trading post precedence over crafting if costs are equal
@@ -334,7 +330,9 @@ fn calculate_precise_min_crafting_cost(
         if output_count > item_count {
             // Should never have leftovers if we're crafting more
             debug_assert!(context.items.leftovers.get(&item_id) == None);
-            context.items.leftovers.insert(item_id, (output_count - item_count, crafting_cost_per_item.unwrap()));
+            context.items.leftovers.insert(item_id, (
+                output_count - item_count, crafting_cost_per_item.unwrap(), Source::Crafting
+            ));
         }
     } else {
         // Un-mark ingredients for purchase
@@ -349,17 +347,25 @@ fn calculate_precise_min_crafting_cost(
             }
         }
         context.items.crafted = crafted_backup;
+        context.items.leftovers = leftovers_backup;
     }
 
     // Mark for purchase
-    if source != Source::Crafting {
-        context.purchases.push((item_id, item_count, source));
-    }
     if source == Source::TradingPost {
+        context.purchases.push((item_id, item_count, source));
         tp_listings_map
             .get_mut(&item_id)
             .unwrap()
             .pending_buy_quantity += item_count;
+    }
+    if source == Source::Vendor {
+        let (cost_per_item, purchase_count) = vendor_data.unwrap();
+        context.purchases.push((item_id, item_count * purchase_count, source));
+        if purchase_count > item_count {
+            // Should never still have leftovers if we're buying more
+            debug_assert!(context.items.leftovers.get(&item_id) == None);
+            context.items.leftovers.insert(item_id, (purchase_count - item_count, cost_per_item, Source::Vendor));
+        }
     }
 
     Some(PreciseCraftingCost { cost: cost + cost_of_leftovers_used, source })

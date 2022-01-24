@@ -38,6 +38,7 @@ pub struct Config {
     pub karma: Option<Rational32>,
     pub um: Option<Rational32>,
     pub vm: Option<Rational32>,
+    pub ascended: Option<u32>,
 
     pub cache_dir: PathBuf,
     pub api_recipes_file: PathBuf,
@@ -70,6 +71,7 @@ impl Config {
         config.karma = Rational32::approximate_float(1f32);
         config.um = Rational32::approximate_float(8f32);
         config.vm = Rational32::approximate_float(33f32);
+        config.ascended = Some(150);
 
         config.item_id = opt.item_id;
 

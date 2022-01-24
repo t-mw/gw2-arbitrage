@@ -33,6 +33,12 @@ impl Money {
             ..Default::default()
         }
     }
+    pub fn from_karma(karma: i32) -> Self {
+        Self {
+            karma: Rational32::from(karma),
+            ..Default::default()
+        }
+    }
     pub fn from_um(um: i32) -> Self {
         Self {
             um: Rational32::from(um),
@@ -101,17 +107,6 @@ impl Money {
         }
     }
 
-    // integer division rounding up
-    // see: https://stackoverflow.com/questions/2745074/fast-ceiling-of-an-integer-division-in-c-c
-    pub fn div_i32_ceil(self, y: i32) -> Money {
-        Money {
-            copper: (self.copper + y - 1) / y,
-            karma: (self.karma + y - 1) / y,
-            um: (self.um + y - 1) / y,
-            vm: (self.vm + y - 1) / y,
-        }
-    }
-
     // Gives an approximate ratio between two money values; for profit on cost
     pub fn percent(self, other: Self) -> f64 {
         let value = self.copper_value().to_f64().unwrap_or(0_f64);
@@ -121,29 +116,33 @@ impl Money {
 }
 impl fmt::Display for Money {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let copper = self.copper.to_integer();
-        let sign = if copper < 0 { "-" } else { "" };
-        let copper = copper.abs();
+        let mut currencies = Vec::new();
 
-        let gold = copper / 10000;
-        let silver = (copper - gold * 10000) / 100;
-        let copper = copper - gold * 10000 - silver * 100;
+        if self.copper != Rational32::zero() {
+            let copper = self.copper.to_integer();
+            let sign = if copper < 0 { "-" } else { "" };
+            let copper = copper.abs();
 
-        let mut display = format!("{}{}.{:02}.{:02}g", sign, gold, silver, copper);
+            let gold = copper / 10000;
+            let silver = (copper - gold * 10000) / 100;
+            let copper = copper - gold * 10000 - silver * 100;
+
+            currencies.push(format!("{}{}.{:02}.{:02}g", sign, gold, silver, copper));
+        }
 
         if self.karma != Rational32::zero() {
-            display = format!("{}, {} Karma", display, self.karma.to_integer());
+            currencies.push(format!("{} Karma", self.karma.to_integer()));
         }
 
         if self.um != Rational32::zero() {
-            display = format!("{}, {} UM", display, self.um.to_integer());
+            currencies.push(format!("{} UM", self.um.to_integer()));
         }
 
         if self.vm != Rational32::zero() {
-            display = format!("{}, {} VM", display, self.vm.to_integer());
+            currencies.push(format!("{} VM", self.vm.to_integer()));
         }
 
-        write!(f, "{}", display)
+        write!(f, "{}", currencies.join(", "))
     }
 }
 impl Default for Money {

@@ -225,12 +225,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .get(ingredient_id)
                         .unwrap_or_else(|| panic!("Missing item for ingredient {}", ingredient_id))
                         .vendor_cost();
-                    if let Some(cost) = vendor_cost {
-                        format!(
-                            " (vendor: {}) Subtotal: {}",
-                            cost,
-                            cost * ingredient.count,
-                        )
+                    if let Some((cost, purchase_count)) = vendor_cost {
+                        if purchase_count > 1 {
+                            format!(
+                                " (vendor: {} per {}) Subtotal: {}",
+                                cost * purchase_count,
+                                purchase_count,
+                                cost * ingredient.count,
+                            )
+                        } else {
+                            format!(
+                                " (vendor: {}) Subtotal: {}",
+                                cost,
+                                cost * ingredient.count,
+                            )
+                        }
                     } else {
                         "".to_string()
                     }
@@ -316,7 +325,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let leftovers = profitable_item.crafted_items.leftovers;
         if !leftovers.is_empty() {
             println!("Leftovers:");
-            for (leftover_id, (count, cost)) in leftovers.iter() {
+            for (leftover_id, (count, cost, _)) in leftovers.iter() {
                 println!(
                     "{} {}, breakeven: {} each",
                     count,

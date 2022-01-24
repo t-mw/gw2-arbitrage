@@ -87,7 +87,7 @@ fn calc_revenue(buys: Vec<(u32, u32)>) -> Money {
     buys.iter()
         .map(|(count, price)| {
             (0..*count)
-                .map(|_| Money::from_copper(*price).trading_post_sale_revenue())
+                .map(|_| Money::from_copper(*price as i32).trading_post_sale_revenue())
                 .sum()
         })
         .sum()
