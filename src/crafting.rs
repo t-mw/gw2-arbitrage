@@ -62,20 +62,20 @@ pub fn calculate_estimated_min_crafting_cost(
                 }
             }
 
-            Some(cost.div_u32_ceil(output_item_count))
+            Some(cost.div_i32_ceil(output_item_count as i32))
         }
     });
 
     let tp_cost = tp_prices_map
         .get(&item_id)
         .filter(|price| price.sells.quantity > 0)
-        .map(|price| Money::from_copper(price.sells.unit_price));
+        .map(|price| Money::from_copper(price.sells.unit_price as i32));
 
     let vendor_cost = item.and_then(|item| {
         if opt.include_ascended && item.is_common_ascended_material() {
             Some(Money::zero())
         } else {
-            item.vendor_cost()
+            item.vendor_cost().or_else(|| item.token_value())
         }
     });
     let cost = tp_cost.inner_min(crafting_cost).inner_min(vendor_cost)?;
@@ -307,13 +307,14 @@ fn calculate_precise_min_crafting_cost(
     let tp_cost = tp_listings_map
         .get(&item_id)
         .and_then(|listings| listings.lowest_sell_offer(item_count))
-        .and_then(|offer| Some(Money::from_copper(offer)));
+        .and_then(|offer| Some(Money::from_copper(offer as i32)));
 
     let vendor_cost = item.and_then(|item| {
         if opt.include_ascended && item.is_common_ascended_material() {
             Some(Money::zero())
         } else {
             item.vendor_cost()
+                .or_else(|| item.token_value())
                 .map(|cost| cost * item_count)
         }
     });
@@ -380,7 +381,7 @@ pub fn calculate_crafting_profit(
 
     let recipe = recipes_map.get(&item_id);
     let output_item_count = recipe.map(|recipe| recipe.output_item_count).unwrap_or(1);
-    let threshold = Money::from_copper(opt.threshold.unwrap_or(0));
+    let threshold = Money::from_copper(opt.threshold.unwrap_or(0) as i32);
 
     let mut listing_profit = Money::zero();
     let mut total_crafting_cost = Money::zero();
@@ -428,7 +429,7 @@ pub fn calculate_crafting_profit(
 
 
         let (buy_price, min_buy) = if let Some(price) = opt.value {
-            (Money::from_copper(price), price)
+            (Money::from_copper(price as i32), price)
         } else if let Some((buy_price, min_buy)) = tp_listings_map
             .get_mut(&item_id)
             .unwrap_or_else(|| panic!("Missing listings for item id: {}", item_id))
@@ -485,10 +486,10 @@ pub fn calculate_crafting_profit(
                     });
                 ingredient.count += count;
                 if ingredient.min_price.is_zero() {
-                    ingredient.min_price = Money::from_copper(min_sell);
+                    ingredient.min_price = Money::from_copper(min_sell as i32);
                 }
-                ingredient.max_price = Money::from_copper(max_sell);
-                ingredient.total_cost += Money::from_copper(cost);
+                ingredient.max_price = Money::from_copper(max_sell as i32);
+                ingredient.total_cost += Money::from_copper(cost as i32);
             }
         }
         debug_assert!(tp_listings_map
@@ -503,8 +504,8 @@ pub fn calculate_crafting_profit(
             crafting_cost: total_crafting_cost,
             profit: listing_profit,
             count: crafting_count,
-            max_sell: Money::from_copper(max_sell),
-            min_sell: Money::from_copper(min_sell),
+            max_sell: Money::from_copper(max_sell as i32),
+            min_sell: Money::from_copper(min_sell as i32),
             breakeven: breakeven.trading_post_listing_price(),
             crafting_steps: crafted_items.crafting_steps(recipes_map).to_integer(),
             crafted_items,
@@ -602,7 +603,7 @@ impl ItemListings {
                 listing.quantity -= 1;
                 count -= 1;
                 min_buy = listing.unit_price;
-                revenue += Money::from_copper(listing.unit_price).trading_post_sale_revenue();
+                revenue += Money::from_copper(listing.unit_price as i32).trading_post_sale_revenue();
                 listing.quantity.is_zero()
             } else {
                 return None;

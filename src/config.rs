@@ -4,6 +4,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
+use num_rational::Rational32;
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -33,6 +34,11 @@ pub struct Config {
     pub lang: Option<Language>,
     pub api_key: Option<String>,
 
+    // Currency conversion values
+    pub karma: Option<Rational32>,
+    pub um: Option<Rational32>,
+    pub vm: Option<Rational32>,
+
     pub cache_dir: PathBuf,
     pub api_recipes_file: PathBuf,
     pub custom_recipes_file: PathBuf,
@@ -59,6 +65,12 @@ impl Config {
 
         config.output_csv = opt.output_csv;
         config.lang = opt.lang;
+
+        // XXX: pull these from config, don't hardcode them
+        config.karma = Rational32::approximate_float(1f32);
+        config.um = Rational32::approximate_float(8f32);
+        config.vm = Rational32::approximate_float(33f32);
+
         config.item_id = opt.item_id;
 
         config.filter_disciplines = opt.filter_disciplines;
