@@ -397,10 +397,12 @@ pub fn calculate_crafting_profit(
     let mut min_sell = 0;
     let max_sell = tp_listings_map
         .get(&item_id)
-        .unwrap_or_else(|| panic!("Missing listings for item id: {}", item_id))
-        .buys
-        .last()
-        .map_or(0, |l| l.unit_price);
+        .map_or_else(|| opt.threshold.unwrap_or(0), |listings| {
+            listings
+                .buys
+                .last()
+                .map_or(0, |l| l.unit_price)
+        });
     let mut breakeven = Money::zero();
 
     // simulate crafting 1 item per loop iteration until it becomes unprofitable
