@@ -262,6 +262,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             profitable_item.count, item_id
         );
         for (item_id, count, recipe) in profitable_item.crafted_items.sorted(item_id, &recipes_map) {
+            let num_crafted = count / recipe.output_item_count;
             let item_name = items_map
                 .get(&item_id)
                 .map_or_else(|| "???".to_string(), |item| item.to_string());
@@ -270,10 +271,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let ingredient_name = items_map
                     .get(&ingredient.item_id)
                     .map_or_else(|| "???".to_string(), |item| item.to_string());
-                format!("{} {}", ingredient.count * count, ingredient_name)
+                format!("{} {}", ingredient.count * num_crafted, ingredient_name)
             }).collect::<Vec<String>>().join(" ");
             if recipe.output_item_count > 1 {
-                println!("{} (makes {}) {} from {}", count / recipe.output_item_count, count, item_name, ingredients);
+                println!("{} (makes {}) {} from {}", num_crafted, count, item_name, ingredients);
             } else {
                 println!("{} {} from {}", count, item_name, ingredients);
             }
