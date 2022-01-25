@@ -19,7 +19,6 @@ pub const CACHE_PREFIX: &str = "cache_";
 #[derive(Debug, Default)]
 pub struct CraftingOptions {
     pub include_timegated: bool,
-    pub include_ascended: bool,
     pub count: Option<u32>,
     pub threshold: Option<u32>,
     pub value: Option<u32>,
@@ -35,10 +34,10 @@ pub struct Config {
     pub api_key: Option<String>,
 
     // Currency conversion values
+    pub ascended: Option<u32>,
     pub karma: Option<Rational32>,
     pub um: Option<Rational32>,
     pub vm: Option<Rational32>,
-    pub ascended: Option<u32>,
 
     pub cache_dir: PathBuf,
     pub api_recipes_file: PathBuf,
@@ -59,19 +58,11 @@ impl Config {
         let opt = Opt::from_args();
 
         config.crafting.include_timegated = opt.include_timegated;
-        config.crafting.include_ascended = opt.include_ascended;
         config.crafting.count = opt.count;
         config.crafting.threshold = opt.threshold;
         config.crafting.value = opt.value;
 
         config.output_csv = opt.output_csv;
-        config.lang = opt.lang;
-
-        // XXX: pull these from config, don't hardcode them
-        config.karma = Rational32::approximate_float(1f32);
-        config.um = Rational32::approximate_float(8f32);
-        config.vm = Rational32::approximate_float(33f32);
-        config.ascended = Some(150);
 
         config.item_id = opt.item_id;
 
@@ -87,17 +78,71 @@ impl Config {
 
         config.api_key = file.api_key;
 
-        if let None = config.lang {
-            if let Some(code) = file.lang {
-                config.lang = code.parse().map_or_else(
-                    |e| {
-                        println!("Config file: {}", e);
-                        None
-                    },
-                    |c| Some(c),
-                )
+        config.lang = if let Some(_) = opt.lang {
+            opt.lang
+        } else if let Some(code) = file.lang {
+            code.parse().map_or_else(
+                |e| {
+                    println!("Config file: {}", e);
+                    None
+                },
+                |c| Some(c),
+            )
+        } else {
+            None
+        };
+
+        config.ascended = if let Some(provided) = opt.ascended_value {
+            if let Some(value) = provided {
+                Some(value)
+            } else {
+                Some(0)
             }
-        }
+        } else if let Some(currencies) = &file.currencies {
+            if let Some(value) = currencies.ascended {
+                Some(value)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        config.karma = if let Some(value) = opt.karma {
+            Rational32::approximate_float(value)
+        } else if let Some(currencies) = &file.currencies {
+            if let Some(value) = currencies.karma {
+                Rational32::approximate_float(value)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        config.um = if let Some(value) = opt.um {
+            Rational32::approximate_float(value)
+        } else if let Some(currencies) = &file.currencies {
+            if let Some(value) = currencies.um {
+                Rational32::approximate_float(value)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        config.vm = if let Some(value) = opt.vm {
+            Rational32::approximate_float(value)
+        } else if let Some(currencies) = &file.currencies {
+            if let Some(value) = currencies.vm {
+                Rational32::approximate_float(value)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         let cache_dir = cache_dir(&opt.cache_dir).expect("Failed to identify cache dir");
         ensure_dir(&cache_dir).expect("Failed to create cache dir");
@@ -167,6 +212,15 @@ struct ConfigFile {
     // API key requires scope unlocks
     api_key: Option<String>,
     lang: Option<String>,
+    currencies: Option<ConfigFileCurrencySection>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ConfigFileCurrencySection {
+    ascended: Option<u32>,
+    karma: Option<f64>,
+    um: Option<f64>,
+    vm: Option<f64>,
 }
 
 #[derive(StructOpt, Debug)]
@@ -174,10 +228,6 @@ struct Opt {
     /// Include timegated recipes such as Deldrimor Steel Ingot
     #[structopt(short = "t", long)]
     include_timegated: bool,
-
-    /// Include recipes that require Piles of Bloodstone Dust, Dragonite Ore or Empyreal Fragments
-    #[structopt(short = "a", long)]
-    include_ascended: bool,
 
     /// Output the full list of profitable recipes to this CSV file
     #[structopt(short, long, parse(from_os_str))]
@@ -218,6 +268,24 @@ struct Opt {
     // /// One of "en", "es", "de", "fr", or "zh". Defaults to "en"
     #[structopt(long, parse(try_from_str = get_lang))]
     lang: Option<Language>,
+
+    /// Include recipes that require Piles of Bloodstone Dust, Dragonite Ore or Empyreal Fragments,
+    /// with an optional opportunity cost per item
+    #[structopt(short = "a", long)]
+    ascended_value: Option<Option<u32>>,
+
+    /// Include recipes that require ingredients that can only be purchased with karma, using this
+    /// conversion factor as the opportunity cost
+    #[structopt(long)]
+    karma: Option<f64>,
+
+    /// Include recipes that use LW3 map tokens, using this conversion factor as the opportunity cost
+    #[structopt(long)]
+    um: Option<f64>,
+
+    /// Include recipes that use LW4 map tokens, using this conversion factor as the opportunity cost
+    #[structopt(long)]
+    vm: Option<f64>,
 }
 
 static CACHE_DIR_HELP: Lazy<String> = Lazy::new(|| {
@@ -244,6 +312,12 @@ static CONFIG_FILE_HELP: Lazy<String> = Lazy::new(|| {
 
     api_key = "<key-with-unlocks-scope>"
     lang = "<lang>"
+
+    [currencies]
+    ascended = <opportunity cost per item>
+    karma = <opportunity cost per karma>
+    um = <opportunity cost per um>
+    vm = <opportunity cost per vm>
 
 The default file location is '{}'."#,
         config_file(&None).unwrap().display()

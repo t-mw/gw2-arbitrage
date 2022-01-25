@@ -313,17 +313,18 @@ impl Item {
             // Apples, Buttermilk, Celery Stalks, Cheese Wedges, Cumin, Green Beans, Lemons, Nutmeg
             // Seeds, Tomatoes, Yeast
             12788 | 12801 | 12790 | 12802 | 12793 | 12794 | 12795 | 12796 | 12798 | 12804
+                if CONFIG.karma != None
                 => Some((Money::from_karma(35), 1)),
             // Bananas, Basil Leaves, Bell Peppers, Black Beans, Kidney Beans, Rice
-            12773 | 12774 | 12776 | 12777 | 12778 | 12780 => Some((Money::from_karma(49), 1)),
+            12773 | 12774 | 12776 | 12777 | 12778 | 12780 if CONFIG.karma != None => Some((Money::from_karma(49), 1)),
             // Almonds, Avocados, Cherries, Ginger Root, Limes, Sour Cream
-            12765 | 12766 | 12767 | 12768 | 12769 | 12764 => Some((Money::from_karma(77), 1)),
+            12765 | 12766 | 12767 | 12768 | 12769 | 12764 if CONFIG.karma != None => Some((Money::from_karma(77), 1)),
             // Chickpeas, Coconuts, Horseradish Root, Pears, Pinenuts, Shallots
-            12781 | 12782 | 12783 | 12785 | 12786 | 12787 => Some((Money::from_karma(112), 1)),
+            12781 | 12782 | 12783 | 12785 | 12786 | 12787 if CONFIG.karma != None => Some((Money::from_karma(112), 1)),
             // Eggplants, Peaches
-            12770 | 12771 => Some((Money::from_karma(154), 1)),
+            12770 | 12771 if CONFIG.karma != None => Some((Money::from_karma(154), 1)),
             // Mangos
-            12772 => Some((Money::from_karma(203), 1)),
+            12772 if CONFIG.karma != None => Some((Money::from_karma(203), 1)),
 
             _ => None,
         }
