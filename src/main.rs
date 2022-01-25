@@ -125,7 +125,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(&mut purchased_ingredients),
             &config::CraftingOptions {
                 include_timegated: true,
-                include_ascended: true,
                 ..CONFIG.crafting
             },
         );
@@ -142,7 +141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Shopping list for {} x {} = {} profit ({} / step, {}%)",
             profitable_item.count,
             &item,
-            profitable_item.profit,
+            Money::from_copper(profitable_item.profit.to_copper_value()),
             profitable_item.profit_per_crafting_step().to_copper_value(),
             (profitable_item.profit_on_cost() * 100_f64)
                 .round(),

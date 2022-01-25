@@ -306,7 +306,7 @@ fn calculate_precise_min_crafting_cost(
 
     let vendor_data = item.and_then(|item| {
         item.vendor_cost()
-            .or_else(|| item.token_value().map(|v| (v, 0)))
+            .or_else(|| item.token_value().map(|v| (v, 1)))
             .map(|cost| (cost.0 * item_count, cost.1))
     });
     let vendor_cost = if let Some((cost, _)) = vendor_data {
