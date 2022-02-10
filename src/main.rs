@@ -91,6 +91,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .into_iter()
         // prefer api recipes over custom recipes if they share the same output item id, by inserting them later
         .chain(api_recipes.into_iter().map(std::convert::From::from))
+        .filter(|recipe| {
+            if let Some(recipe_blacklist) = &CONFIG.recipe_blacklist {
+                if let Some(id) = recipe.id {
+                    if recipe_blacklist.contains(&id) {
+                        return false;
+                    }
+                }
+            }
+            if let Some(item_blacklist) = &CONFIG.item_blacklist {
+                for ingredient in &recipe.ingredients {
+                    if item_blacklist.contains(&ingredient.item_id) {
+                        return false;
+                    }
+                }
+            }
+
+            true
+        })
         .collect();
     let mut recipes_map = vec_to_map(recipes, |x| x.output_item_id);
     let items_map = vec_to_map(items, |x| x.id);
