@@ -4,6 +4,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
+use std::collections::HashSet;
 use num_rational::Rational32;
 
 use once_cell::sync::Lazy;
@@ -43,6 +44,9 @@ pub struct Config {
     pub api_recipes_file: PathBuf,
     pub custom_recipes_file: PathBuf,
     pub items_file: PathBuf,
+
+    pub item_blacklist: Option<HashSet<u32>>,
+    pub recipe_blacklist: Option<HashSet<u32>>,
 
     pub item_id: Option<u32>,
 }
@@ -144,6 +148,33 @@ impl Config {
             None
         };
 
+        config.item_blacklist = if let Some(blacklist_section) = &file.blacklist {
+            if let Some(items) = &blacklist_section.items {
+                let mut set = HashSet::new();
+                for item in items {
+                    set.insert(*item);
+                }
+                Some(set)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        config.recipe_blacklist = if let Some(blacklist_section) = &file.blacklist {
+            if let Some(recipes) = &blacklist_section.recipes {
+                let mut set = HashSet::new();
+                for recipe in recipes {
+                    set.insert(*recipe);
+                }
+                Some(set)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let cache_dir = cache_dir(&opt.cache_dir).expect("Failed to identify cache dir");
         ensure_dir(&cache_dir).expect("Failed to create cache dir");
         match flush_cache(&cache_dir) {
@@ -213,14 +244,19 @@ struct ConfigFile {
     api_key: Option<String>,
     lang: Option<String>,
     currencies: Option<ConfigFileCurrencySection>,
+    blacklist: Option<ConfigFileBlacklistSection>,
 }
-
 #[derive(Debug, Default, Deserialize)]
 struct ConfigFileCurrencySection {
     ascended: Option<u32>,
     karma: Option<f64>,
     um: Option<f64>,
     vm: Option<f64>,
+}
+#[derive(Debug, Default, Deserialize)]
+struct ConfigFileBlacklistSection {
+    items: Option<Vec<u32>>,
+    recipes: Option<Vec<u32>>,
 }
 
 #[derive(StructOpt, Debug)]
