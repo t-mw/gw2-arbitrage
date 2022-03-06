@@ -153,6 +153,8 @@ pub enum ItemType {
     Gizmo,
     Key,
     MiniPet,
+    Quux, // Jade bot item; may be a temporary name
+    Qux, // Jade bot core; may be a temporary name
     Tool,
     Trait,
     Trinket,
