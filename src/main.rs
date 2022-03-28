@@ -304,7 +304,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect::<Vec<String>>()
                 .join("\n");
             println!(
-                "You {} craft this yet. Required recipes{}:\n{}",
+                "You {} craft this yet. Required recipe{}:\n{}",
                 match known_recipes {
                     Some(_) => "can not",
                     None => "may not be able to",
