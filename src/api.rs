@@ -276,11 +276,11 @@ impl Item {
             70647 | // Crystalline Bottle
             75762 | // Bag of Mortar
             75087 | // Essence of Elegance
-            12136 | // Bag of Flour - 1, from some vendors, 10 from master chefs
             // Rune of Holding: Minor, Regular, Major, Greater, Superior
             13010 | 13006 | 13007 | 13008 | 13009
                 => Some((Money::from_copper((self.vendor_value * 8) as i32), 1)),
             // 10s
+            12136 | // Bag of Flour - 1, from some vendors, 10 from master chefs
             19792 | // Spool of Jute Thread
             19789 | // Spool of Wool Thread
             19794 | // Spool of Cotton Thread
