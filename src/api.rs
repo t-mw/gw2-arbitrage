@@ -272,6 +272,7 @@ impl Item {
             // Standard vendor sell price
 
             // Singular
+            8576  | // Bottle of Rice Wine
             76839 | // Milling Basin
             70647 | // Crystalline Bottle
             75762 | // Bag of Mortar
