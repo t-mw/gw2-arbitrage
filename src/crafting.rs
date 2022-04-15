@@ -360,11 +360,12 @@ fn calculate_precise_min_crafting_cost(
     }
     if source == Source::Vendor {
         let (cost_per_item, purchase_count) = vendor_data.unwrap();
-        context.purchases.push((item_id, item_count * purchase_count, source));
-        if purchase_count > item_count {
+        let purchase = item_count.div_ceil(purchase_count) * purchase_count;
+        context.purchases.push((item_id, purchase, source));
+        if purchase > item_count {
             // Should never still have leftovers if we're buying more
             debug_assert!(context.items.leftovers.get(&item_id) == None);
-            context.items.leftovers.insert(item_id, (purchase_count - item_count, cost_per_item, Source::Vendor));
+            context.items.leftovers.insert(item_id, (purchase - item_count, cost_per_item, Source::Vendor));
         }
     }
 
@@ -803,5 +804,14 @@ where
             (None, _) => other,
             (_, None) => self,
         }
+    }
+}
+
+trait DivCeil {
+    fn div_ceil(&self, other: Self) -> Self;
+}
+impl DivCeil for u32 {
+    fn div_ceil(&self, other: Self) -> Self {
+        (self + other - 1) / other
     }
 }

@@ -417,6 +417,7 @@ fn get_lang<Language: FromStr + VariantNames>(
     Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Display, EnumString, EnumVariantNames,
 )]
 pub enum Discipline {
+    // TODO: swap these next two, next time rebuilding data files, so alphabetical
     Artificer,
     Armorsmith,
     Chef,

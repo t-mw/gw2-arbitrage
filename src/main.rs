@@ -202,19 +202,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
         let mut inventory = 0;
         for ((ingredient_id, ingredient_source), ingredient) in sorted_ingredients {
-            let ingredient_count_msg = if ingredient.count > ITEM_STACK_SIZE {
-                let stack_count = ingredient.count / ITEM_STACK_SIZE;
-                inventory += stack_count;
-                let remainder = ingredient.count % ITEM_STACK_SIZE;
+            let purchase_count = if *ingredient_source == crafting::Source::Vendor {
+                items_map
+                    .get(ingredient_id)
+                    .unwrap_or_else(|| panic!("Missing item for ingredient {}", ingredient_id))
+                    .vendor_cost()
+                    .unwrap_or((Money::from_copper(0), 1))
+                    .1
+            } else {
+                ITEM_STACK_SIZE
+            };
+            let ingredient_count_msg = if purchase_count > 1 && ingredient.count > purchase_count {
+                let stack_count = ingredient.count / purchase_count;
+                inventory += ingredient.count.div_ceil(ITEM_STACK_SIZE);
+                let remainder = ingredient.count % purchase_count;
                 let remainder_msg = if remainder != 0 {
-                    inventory += 1;
                     format!(" + {}", remainder)
                 } else {
                     "".to_string()
                 };
                 format!(
                     "{} ({} x {}{})",
-                    ingredient.count, stack_count, ITEM_STACK_SIZE, remainder_msg
+                    ingredient.count, stack_count, purchase_count, remainder_msg
                 )
             } else {
                 inventory += 1;
@@ -662,5 +671,14 @@ fn collect_ingredient_ids(
             ids.push(ingredient.item_id);
             collect_ingredient_ids(ingredient.item_id, recipes_map, ids);
         }
+    }
+}
+
+trait DivCeil {
+    fn div_ceil(&self, other: Self) -> Self;
+}
+impl DivCeil for u32 {
+    fn div_ceil(&self, other: Self) -> Self {
+        (self + other - 1) / other
     }
 }
