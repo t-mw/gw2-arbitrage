@@ -10,6 +10,7 @@ use num_traits::Zero;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
+use std::cmp::Ordering;
 
 #[derive(Debug, Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Source {
@@ -787,6 +788,17 @@ impl Recipe {
             || self.output_item_id == 79795  // Dragon Hatchling Doll Adornments
             || self.output_item_id == 79817  // Dragon Hatchling Doll Frame
             || self.output_item_id == 43772 // Charged Quartz Crystal
+    }
+
+    pub fn sorted_ingredients(&self) -> Vec<&api::RecipeIngredient> {
+        let mut ingredients: Vec<&api::RecipeIngredient> = self.ingredients.iter().collect();
+        ingredients.sort_unstable_by(|a, b| {
+            match b.count.cmp(&a.count) {
+                Ordering::Equal => b.item_id.cmp(&a.item_id),
+                v => v,
+            }
+        });
+        ingredients
     }
 }
 

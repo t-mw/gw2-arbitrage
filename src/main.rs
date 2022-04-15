@@ -293,8 +293,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let item_name = items_map
                 .get(&item_id)
                 .map_or_else(|| "???".to_string(), |item| item.to_string());
-            // TODO: we want _these_ well ordered as well...
-            let ingredients = recipe.ingredients.iter().map(|ingredient| {
+            let ingredients = recipe.sorted_ingredients().iter().map(|ingredient| {
                 let ingredient_name = items_map
                     .get(&ingredient.item_id)
                     .map_or_else(|| "???".to_string(), |item| item.to_string());
