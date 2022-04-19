@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use crate::api;
 use crate::config;
-use crate::crafting;
+use crate::recipe;
 
 use std::str::FromStr;
 
@@ -64,18 +64,18 @@ pub struct Recipe {
     pub ingredients: Vec<api::RecipeIngredient>,
 }
 
-pub async fn fetch_custom_recipes() -> Result<Vec<crafting::Recipe>, Box<dyn std::error::Error>> {
+pub async fn fetch_custom_recipes() -> Result<Vec<recipe::Recipe>, Box<dyn std::error::Error>> {
     let url = "https://raw.githubusercontent.com/gw2efficiency/custom-recipes/master/recipes.json";
     println!("Fetching {}", url);
 
     let custom_recipes: Vec<Recipe> = reqwest::get(url).await?.json().await?;
 
-    let recipes: Vec<crafting::Recipe> = custom_recipes
+    let recipes: Vec<recipe::Recipe> = custom_recipes
         .into_iter()
         // Remove blacklisted recipes here to avoid printing errors for non-integers
         .filter(|r| !BLACKLIST_ITEM_IDS.contains(&r.output_item_id))
         .map(std::convert::TryFrom::try_from)
-        .filter_map(|result: Result<crafting::Recipe, _>| match result {
+        .filter_map(|result: Result<recipe::Recipe, _>| match result {
             Ok(recipe) => Some(recipe),
             Err(e) => {
                 eprintln!("{}", e);

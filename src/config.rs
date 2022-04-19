@@ -439,6 +439,22 @@ pub enum Discipline {
     Growing,
 }
 
+impl Discipline {
+    pub fn get_abbrev(&self) -> String {
+        let s = self.to_string();
+        match &s[..1] {
+            // take 1st and 8th characters to distinguish Merchant/Mystic Forge
+            "M" => format!("{}{}", &s[..1], &s[7..8]),
+            // take 1st and 3rd characters to distinguish Scribe/Salvage and
+            // Armorsmith/Artificer/Achievement
+            "A" | "S" => format!("{}{}", &s[..1], &s[2..3]),
+            // take 1st and 4th characters to distinguish Chef/Charge
+            "C" => format!("{}{}", &s[..1], &s[3..4]),
+            l => l.to_string(),
+        }
+    }
+}
+
 fn get_discipline<Discipline: FromStr + VariantNames>(
     discipline: &str,
 ) -> Result<Discipline, Box<dyn std::error::Error>> {

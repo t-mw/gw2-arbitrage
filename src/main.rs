@@ -6,9 +6,10 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 use gw2_arbitrage::*;
-
 use config::CONFIG;
 use money::Money;
+use recipe::Recipe;
+use item::Item;
 
 const ITEM_STACK_SIZE: u32 = 250; // GW2 uses a "stack size" of 250
 
@@ -56,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("Loading custom recipes");
-    let custom_recipes: Vec<crafting::Recipe> = request::get_data(
+    let custom_recipes: Vec<Recipe> = request::get_data(
         &CONFIG.custom_recipes_file,
         gw2efficiency::fetch_custom_recipes,
     )
@@ -72,12 +73,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("Loading items");
-    let items: Vec<api::Item> = request::get_data(&CONFIG.items_file, || async {
+    let items: Vec<Item> = request::get_data(&CONFIG.items_file, || async {
         let api_items: Vec<api::ApiItem> =
             request::request_paginated("items", &CONFIG.lang).await?;
         Ok(api_items
             .into_iter()
-            .map(|api_item| api::Item::from(api_item))
+            .map(|api_item| Item::from(api_item))
             .collect())
     })
     .await?;
@@ -87,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         CONFIG.items_file.display()
     );
 
-    let recipes: Vec<crafting::Recipe> = custom_recipes
+    let recipes: Vec<Recipe> = custom_recipes
         .into_iter()
         // prefer api recipes over custom recipes if they share the same output item id, by inserting them later
         .chain(api_recipes.into_iter().map(std::convert::From::from))
@@ -113,259 +114,306 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut recipes_map = vec_to_map(recipes, |x| x.output_item_id);
     let items_map = vec_to_map(items, |x| x.id);
 
-    let recursive_recipes = mark_recursive_recipes(&recipes_map);
+    let recursive_recipes = recipe::mark_recursive_recipes(&recipes_map);
     for recipe_id in recursive_recipes.into_iter() {
         recipes_map.remove(&recipe_id);
     }
 
     if let Some(item_id) = CONFIG.item_id {
-        let item = items_map.get(&item_id).expect("Item not found");
-
-        let mut ingredient_ids = vec![];
-        collect_ingredient_ids(item_id, &recipes_map, &mut ingredient_ids);
-
-        let mut request_listing_item_ids = vec![item_id];
-        request_listing_item_ids.extend(ingredient_ids);
-        request_listing_item_ids.sort_unstable();
-        request_listing_item_ids.dedup();
-
-        let tp_listings =
-            request::fetch_item_listings(&request_listing_item_ids, Some(&CONFIG.cache_dir))
-                .await?;
-        let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
-
-        let mut purchased_ingredients = Default::default();
-        let profitable_item = crafting::calculate_crafting_profit(
-            item_id,
-            &recipes_map,
-            &items_map,
-            &tp_listings_map,
-            Some(&mut purchased_ingredients),
-            &config::CraftingOptions {
-                include_timegated: true,
-                ..CONFIG.crafting
-            },
-        );
-
-        let profitable_item = if let Some(item) = profitable_item {
-            item
-        } else {
-            println!("Item is not profitable to craft");
-            return Ok(());
-        };
-
-        println!("============");
-        println!(
-            "Shopping list for {} x {} = {} profit ({} / step, {}%)",
-            profitable_item.count,
-            &item,
-            Money::from_copper(profitable_item.profit.to_copper_value()),
-            profitable_item.profit_per_crafting_step().to_copper_value(),
-            (profitable_item.profit_on_cost() * 100_f64)
-                .round(),
-        );
-        let price_msg = if profitable_item.max_sell == profitable_item.min_sell {
-            format!("{}", profitable_item.min_sell)
-        } else {
-            format!(
-                "{} to {}",
-                profitable_item.max_sell,
-                profitable_item.min_sell,
-            )
-        };
-        println!(
-            "Sell at: {}, Money Required: {}, Breakeven price: {}",
-            price_msg,
-            profitable_item.crafting_cost.increase_by_listing_fee(),
-            profitable_item.breakeven,
-        );
-
-        println!("============");
-        let mut sorted_ingredients: Vec<(
-            &(u32, crafting::Source),
-            &crafting::PurchasedIngredient,
-        )> = purchased_ingredients.iter().collect();
-        sorted_ingredients.sort_unstable_by(|a, b| {
-            if b.0 .1 == a.0 .1 {
-                match b.1.count.cmp(&a.1.count) {
-                    Ordering::Equal => match b.1.total_cost.cmp(&a.1.total_cost) {
-                        Ordering::Equal => b.0 .0.cmp(&a.0 .0),
-                        v => v,
-                    },
-                    v => v,
-                }
-            } else if b.0 .1 == crafting::Source::Vendor {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            }
-        });
-        let mut inventory = 0;
-        for ((ingredient_id, ingredient_source), ingredient) in sorted_ingredients {
-            let purchase_count = if *ingredient_source == crafting::Source::Vendor {
-                items_map
-                    .get(ingredient_id)
-                    .unwrap_or_else(|| panic!("Missing item for ingredient {}", ingredient_id))
-                    .vendor_cost()
-                    .unwrap_or((Money::from_copper(0), 1))
-                    .1
-            } else {
-                ITEM_STACK_SIZE
-            };
-            let ingredient_count_msg = if purchase_count > 1 && ingredient.count > purchase_count {
-                let stack_count = ingredient.count / purchase_count;
-                inventory += ingredient.count.div_ceil(ITEM_STACK_SIZE);
-                let remainder = ingredient.count % purchase_count;
-                let remainder_msg = if remainder != 0 {
-                    format!(" + {}", remainder)
-                } else {
-                    "".to_string()
-                };
-                format!(
-                    "{} ({} x {}{})",
-                    ingredient.count, stack_count, purchase_count, remainder_msg
-                )
-            } else {
-                inventory += 1;
-                ingredient.count.to_string()
-            };
-            let source_msg = match *ingredient_source {
-                crafting::Source::TradingPost => {
-                    if ingredient.max_price == ingredient.min_price {
-                        format!(
-                            " (at {}) Subtotal: {}",
-                            ingredient.min_price,
-                            ingredient.total_cost,
-                        )
-                    } else {
-                        format!(
-                            " (at {} to {}) Subtotal: {}",
-                            ingredient.min_price,
-                            ingredient.max_price,
-                            ingredient.total_cost,
-                        )
-                    }
-                }
-                crafting::Source::Vendor => {
-                    let vendor_cost = items_map
-                        .get(ingredient_id)
-                        .unwrap_or_else(|| panic!("Missing item for ingredient {}", ingredient_id))
-                        .vendor_cost();
-                    if let Some((cost, purchase_count)) = vendor_cost {
-                        if purchase_count > 1 {
-                            format!(
-                                " (vendor: {} per {}) Subtotal: {}",
-                                cost * purchase_count,
-                                purchase_count,
-                                cost * ingredient.count,
-                            )
-                        } else {
-                            format!(
-                                " (vendor: {}) Subtotal: {}",
-                                cost,
-                                cost * ingredient.count,
-                            )
-                        }
-                    } else {
-                        "".to_string()
-                    }
-                }
-                crafting::Source::Crafting => "".to_string(),
-            };
-            println!(
-                "{} {}{}",
-                ingredient_count_msg,
-                items_map
-                    .get(ingredient_id)
-                    .map_or_else(|| "???".to_string(), |item| item.to_string()),
-                source_msg,
-            );
-        }
-
-        println!("============");
-        println!("Max inventory slots: {}", inventory + 1); // + 1 for the crafting output
-        println!(
-            "Crafting steps: https://gw2efficiency.com/crafting/calculator/a~1!b~1!c~1!d~{}-{}",
-            profitable_item.count, item_id
-        );
-        for (item_id, count, recipe) in profitable_item.crafted_items.sorted(item_id, &recipes_map) {
-            let num_crafted = count / recipe.output_item_count;
-            let item_name = items_map
-                .get(&item_id)
-                .map_or_else(|| "???".to_string(), |item| item.to_string());
-            let ingredients = recipe.sorted_ingredients().iter().map(|ingredient| {
-                let ingredient_name = items_map
-                    .get(&ingredient.item_id)
-                    .map_or_else(|| "???".to_string(), |item| item.to_string());
-                format!("{} {}", ingredient.count * num_crafted, ingredient_name)
-            }).collect::<Vec<String>>().join(" ");
-            if recipe.output_item_count > 1 {
-                println!("{} (makes {}) {} from {}", num_crafted, count, item_name, ingredients);
-            } else {
-                println!("{} {} from {}", count, item_name, ingredients);
-            }
-        }
-
-        let unknown_recipes: Vec<u32> = profitable_item
-            .crafted_items
-            .unknown_recipes(&recipes_map, &known_recipes)
-            .iter()
-            .map(|&id| id)
-            .collect();
-        if unknown_recipes.len() > 0 {
-            let req_recipes = unknown_recipes
-                .iter()
-                .map(|id| {
-                    let recipe_names = items_map
-                        .iter()
-                        .filter(|(_, item)| {
-                            if let Some(unlocks) = &item.recipe_unlocks() {
-                                unlocks.iter().filter(|&recipe_id| id == recipe_id).count() > 0
-                            } else {
-                                false
-                            }
-                        })
-                        .map(|(_, item)| format!("{}", &item.name))
-                        .collect::<Vec<String>>()
-                        .join(" or ");
-                    if recipe_names.len() > 0 {
-                        recipe_names
-                    } else {
-                        // recipe 5424 for item 29407 has no unlock item, possibly others
-                        format!("Recipe {} is not available!", &id)
-                    }
-                })
-                .collect::<Vec<String>>()
-                .join("\n");
-            println!(
-                "You {} craft this yet. Required recipe{}:\n{}",
-                match known_recipes {
-                    Some(_) => "can not",
-                    None => "may not be able to",
-                },
-                if unknown_recipes.len() > 1 { "s" } else { "" },
-                req_recipes,
-            );
-        }
-
-        let leftovers = profitable_item.crafted_items.leftovers;
-        if !leftovers.is_empty() {
-            println!("Leftovers:");
-            for (leftover_id, (count, cost, _)) in leftovers.iter() {
-                println!(
-                    "{} {}, breakeven: {} each",
-                    count,
-                    items_map
-                        .get(&leftover_id)
-                        .map_or_else(|| "???".to_string(), |item| item.to_string()),
-                    cost.trading_post_listing_price(),
-                );
-            }
-        }
-
-        return Ok(());
+        show_item_profit(item_id, recipes_map, &items_map, &known_recipes).await?;
+    } else {
+        find_profitable_items(recipes_map, &items_map, &known_recipes).await?;
     }
 
+    Ok(())
+}
+
+async fn show_item_profit(
+    item_id: u32,
+    recipes_map: HashMap<u32, Recipe>,
+    items_map: &HashMap<u32, Item>,
+    known_recipes: &Option<HashSet<u32>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let item = items_map.get(&item_id).expect("Item not found");
+
+    let mut ingredient_ids = vec![];
+    if let Some(recipe) = recipes_map.get(&item_id) {
+        recipe.collect_ingredient_ids(&recipes_map, &mut ingredient_ids);
+    }
+
+    /*
+    let mut unknown_recipe_ids = vec![];
+    let unknown_recipes: Vec<u32> = collect_recipe_item_ids(item_id, &recipes_map, &known_recipes)
+        .crafted_items
+        .unknown_recipes(&recipes_map, &known_recipes)
+        .iter()
+        .map(|&id| id)
+        .collect();
+    */
+
+    let mut request_listing_item_ids = vec![item_id];
+    request_listing_item_ids.extend(ingredient_ids);
+    request_listing_item_ids.sort_unstable();
+    request_listing_item_ids.dedup();
+
+    let tp_listings =
+        request::fetch_item_listings(&request_listing_item_ids, Some(&CONFIG.cache_dir))
+            .await?;
+    let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
+
+    let mut purchased_ingredients = Default::default();
+    let profitable_item = crafting::calculate_crafting_profit(
+        item_id,
+        &recipes_map,
+        &items_map,
+        &tp_listings_map,
+        Some(&mut purchased_ingredients),
+        &config::CraftingOptions {
+            include_timegated: true,
+            ..CONFIG.crafting
+        },
+    );
+
+    let profitable_item = if let Some(item) = profitable_item {
+        item
+    } else {
+        println!("Item is not profitable to craft");
+        return Ok(());
+    };
+
+    println!("============");
+    println!(
+        "Shopping list for {} x {} = {} profit ({} / step, {}%)",
+        profitable_item.count,
+        &item,
+        Money::from_copper(profitable_item.profit.to_copper_value()),
+        profitable_item.profit_per_crafting_step().to_copper_value(),
+        (profitable_item.profit_on_cost() * 100_f64)
+            .round(),
+    );
+    let price_msg = if profitable_item.max_sell == profitable_item.min_sell {
+        format!("{}", profitable_item.min_sell)
+    } else {
+        format!(
+            "{} to {}",
+            profitable_item.max_sell,
+            profitable_item.min_sell,
+        )
+    };
+    println!(
+        "Sell at: {}, Money Required: {}, Breakeven price: {}",
+        price_msg,
+        profitable_item.crafting_cost.increase_by_listing_fee(),
+        profitable_item.breakeven,
+    );
+
+    println!("============");
+    let mut sorted_ingredients: Vec<(
+        &(u32, crafting::Source),
+        &crafting::PurchasedIngredient,
+    )> = purchased_ingredients.iter().collect();
+    sorted_ingredients.sort_unstable_by(|a, b| {
+        if b.0 .1 == a.0 .1 {
+            match b.1.count.cmp(&a.1.count) {
+                Ordering::Equal => match b.1.total_cost.cmp(&a.1.total_cost) {
+                    Ordering::Equal => b.0 .0.cmp(&a.0 .0),
+                    v => v,
+                },
+                v => v,
+            }
+        } else if b.0 .1 == crafting::Source::Vendor {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }
+    });
+    let mut inventory = 0;
+    for ((ingredient_id, ingredient_source), ingredient) in sorted_ingredients {
+        let purchase_count = if *ingredient_source == crafting::Source::Vendor {
+            items_map
+                .get(ingredient_id)
+                .unwrap_or_else(|| panic!("Missing item for ingredient {}", ingredient_id))
+                .vendor_cost()
+                .unwrap_or((Money::from_copper(0), 1))
+                .1
+        } else {
+            ITEM_STACK_SIZE
+        };
+        let ingredient_count_msg = if purchase_count > 1 && ingredient.count > purchase_count {
+            let stack_count = ingredient.count / purchase_count;
+            inventory += ingredient.count.div_ceil(ITEM_STACK_SIZE);
+            let remainder = ingredient.count % purchase_count;
+            let remainder_msg = if remainder != 0 {
+                format!(" + {}", remainder)
+            } else {
+                "".to_string()
+            };
+            format!(
+                "{} ({} x {}{})",
+                ingredient.count, stack_count, purchase_count, remainder_msg
+            )
+        } else {
+            inventory += 1;
+            ingredient.count.to_string()
+        };
+        let source_msg = match *ingredient_source {
+            crafting::Source::TradingPost => {
+                if ingredient.max_price == ingredient.min_price {
+                    format!(
+                        " (at {}) Subtotal: {}",
+                        ingredient.min_price,
+                        ingredient.total_cost,
+                    )
+                } else {
+                    format!(
+                        " (at {} to {}) Subtotal: {}",
+                        ingredient.min_price,
+                        ingredient.max_price,
+                        ingredient.total_cost,
+                    )
+                }
+            }
+            crafting::Source::Vendor => {
+                let vendor_cost = items_map
+                    .get(ingredient_id)
+                    .unwrap_or_else(|| panic!("Missing item for ingredient {}", ingredient_id))
+                    .vendor_cost();
+                if let Some((cost, purchase_count)) = vendor_cost {
+                    if purchase_count > 1 {
+                        format!(
+                            " (vendor: {} per {}) Subtotal: {}",
+                            cost * purchase_count,
+                            purchase_count,
+                            cost * ingredient.count,
+                        )
+                    } else {
+                        format!(
+                            " (vendor: {}) Subtotal: {}",
+                            cost,
+                            cost * ingredient.count,
+                        )
+                    }
+                } else {
+                    "".to_string()
+                }
+            }
+            crafting::Source::Crafting => "".to_string(),
+        };
+        println!(
+            "{} {}{}",
+            ingredient_count_msg,
+            items_map
+                .get(ingredient_id)
+                .map_or_else(|| "???".to_string(), |item| item.to_string()),
+            source_msg,
+        );
+    }
+
+    println!("============");
+    println!("Max inventory slots: {}", inventory + 1); // + 1 for the crafting output
+    println!(
+        "Crafting steps: https://gw2efficiency.com/crafting/calculator/a~1!b~1!c~1!d~{}-{}",
+        profitable_item.count, item_id
+    );
+    for (item_id, count, recipe) in profitable_item.crafted_items.sorted(item_id, &recipes_map) {
+        let num_crafted = count / recipe.output_item_count;
+        let item_name = items_map
+            .get(&item_id)
+            .map_or_else(|| "???".to_string(), |item| item.to_string());
+        let ingredients = recipe.sorted_ingredients().iter().map(|ingredient| {
+            let ingredient_name = items_map
+                .get(&ingredient.item_id)
+                .map_or_else(|| "???".to_string(), |item| item.to_string());
+            format!("{} {}", ingredient.count * num_crafted, ingredient_name)
+        }).collect::<Vec<String>>().join(" ");
+        if recipe.output_item_count > 1 {
+            println!("{} (makes {}) {} from {}", num_crafted, count, item_name, ingredients);
+        } else {
+            println!("{} {} from {}", count, item_name, ingredients);
+        }
+    }
+
+    let unknown_recipes: Vec<u32> = profitable_item
+        .crafted_items
+        .unknown_recipes(&recipes_map, &known_recipes)
+        .iter()
+        .map(|&id| id)
+        .collect();
+    if unknown_recipes.len() > 0 {
+        let req_recipes = unknown_recipes
+            .iter()
+            .map(|id| {
+                let recipe_names = items_map
+                    .iter()
+                    .filter(|(_, item)| {
+                        if let Some(unlocks) = &item.recipe_unlocks() {
+                            unlocks.iter().filter(|&recipe_id| id == recipe_id).count() > 0
+                        } else {
+                            false
+                        }
+                    })
+                    .map(|(_, item)| {
+                        /*
+                        // TODO: Would need to get price, which means up at
+                        // collect_ingredient_ids we'd need to also search for unknown recipes
+                        // at all levels, and add those to the market list
+                        if let Some(listing) = tp_listings_map.get(&id) {
+                            if listing.sells.len() > 0 {
+                                debug_assert!(listing.sells[0].unit_price < i32::MAX as u32);
+                                return format!(
+                                    "{}, buy for {}", &item.name,
+                                    Money::from_copper(listing.sells[0].unit_price as i32)
+                                );
+                            }
+                        }
+                        */
+                        format!("{}", &item.name)
+                    })
+                    .collect::<Vec<String>>()
+                    .join(" or ");
+                if recipe_names.len() > 0 {
+                    recipe_names
+                } else {
+                    // recipe 5424 for item 29407 has no unlock item, possibly others
+                    format!("Recipe {} is not available!", &id)
+                }
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        println!(
+            "You {} craft this yet. Required recipes{}:\n{}",
+            match known_recipes {
+                Some(_) => "can not",
+                None => "may not be able to",
+            },
+            if unknown_recipes.len() > 1 { "s" } else { "" },
+            req_recipes,
+        );
+    }
+
+    let leftovers = profitable_item.crafted_items.leftovers;
+    if !leftovers.is_empty() {
+        println!("Leftovers:");
+        for (leftover_id, (count, cost, _)) in leftovers.iter() {
+            println!(
+                "{} {}, breakeven: {} each",
+                count,
+                items_map
+                    .get(&leftover_id)
+                    .map_or_else(|| "???".to_string(), |item| item.to_string()),
+                cost.trading_post_listing_price(),
+            );
+        }
+    }
+
+    return Ok(());
+}
+
+async fn find_profitable_items(
+    recipes_map: HashMap<u32, Recipe>,
+    items_map: &HashMap<u32, Item>,
+    known_recipes: &Option<HashSet<u32>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("Loading trading post prices");
     let tp_prices: Vec<api::Price> = request::request_paginated("commerce/prices", &None).await?;
     println!("Loaded {} trading post prices", tp_prices.len());
@@ -419,7 +467,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .trading_post_sale_revenue();
             if effective_buy_price > crafting_cost {
                 profitable_item_ids.push(*item_id);
-                collect_ingredient_ids(*item_id, &recipes_map, &mut ingredient_ids);
+                if let Some(recipe) = recipes_map.get(&item_id) {
+                    recipe.collect_ingredient_ids(&recipes_map, &mut ingredient_ids);
+                }
             }
         }
     }
@@ -442,7 +492,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .par_iter()
         .filter_map(|item_id| {
             let mut ingredient_ids = vec![*item_id];
-            collect_ingredient_ids(*item_id, &recipes_map, &mut ingredient_ids);
+            if let Some(recipe) = recipes_map.get(&item_id) {
+                recipe.collect_ingredient_ids(&recipes_map, &mut ingredient_ids);
+            }
 
             let mut tp_listings_map_for_item: HashMap<u32, _> = HashMap::new();
             for id in ingredient_ids {
@@ -518,19 +570,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             disciplines: recipe
                 .disciplines
                 .iter()
-                .map(|d| {
-                    let s = d.to_string();
-                    match &s[..1] {
-                        // take 1st and 8th characters to distinguish Merchant/Mystic Forge
-                        "M" => format!("{}{}", &s[..1], &s[7..8]),
-                        // take 1st and 3rd characters to distinguish Scribe/Salvage and
-                        // Armorsmith/Artificer/Achievement
-                        "A" | "S" => format!("{}{}", &s[..1], &s[2..3]),
-                        // take 1st and 4th characters to distinguish Chef/Charge
-                        "C" => format!("{}{}", &s[..1], &s[3..4]),
-                        l => l.to_string(),
-                    }
-                })
+                .map(|d| d.get_abbrev())
                 .collect::<Vec<_>>()
                 .join("/"),
             item_id,
@@ -608,69 +648,6 @@ where
         map.insert(id_fn(&x), x);
     }
     map
-}
-
-fn mark_recursive_recipes(recipes_map: &HashMap<u32, crafting::Recipe>) -> HashSet<u32> {
-    let mut set = HashSet::new();
-    for (recipe_id, recipe) in recipes_map {
-        mark_recursive_recipes_internal(
-            *recipe_id,
-            recipe.output_item_id,
-            recipes_map,
-            &mut vec![],
-            &mut set,
-        );
-    }
-    set
-}
-
-fn mark_recursive_recipes_internal(
-    item_id: u32,
-    search_output_item_id: u32,
-    recipes_map: &HashMap<u32, crafting::Recipe>,
-    ingredients_stack: &mut Vec<u32>,
-    set: &mut HashSet<u32>,
-) {
-    if set.contains(&item_id) {
-        return;
-    }
-    if let Some(recipe) = recipes_map.get(&item_id) {
-        for ingredient in &recipe.ingredients {
-            if ingredient.item_id == search_output_item_id {
-                set.insert(recipe.output_item_id);
-                return;
-            }
-            // skip unnecessary recursion
-            if ingredients_stack.contains(&ingredient.item_id) {
-                continue;
-            }
-            ingredients_stack.push(ingredient.item_id);
-            mark_recursive_recipes_internal(
-                ingredient.item_id,
-                search_output_item_id,
-                recipes_map,
-                ingredients_stack,
-                set,
-            );
-            ingredients_stack.pop();
-        }
-    }
-}
-
-fn collect_ingredient_ids(
-    item_id: u32,
-    recipes_map: &HashMap<u32, crafting::Recipe>,
-    ids: &mut Vec<u32>,
-) {
-    if let Some(recipe) = recipes_map.get(&item_id) {
-        for ingredient in &recipe.ingredients {
-            if ids.contains(&ingredient.item_id) {
-                continue;
-            }
-            ids.push(ingredient.item_id);
-            collect_ingredient_ids(ingredient.item_id, recipes_map, ids);
-        }
-    }
 }
 
 trait DivCeil {
