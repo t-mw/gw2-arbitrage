@@ -142,6 +142,312 @@ impl Recipe {
             }
         }
     }
+
+    pub fn additional_recipes() -> Vec<Recipe> {
+        vec![
+            // Piece of Dragon Jade
+            Recipe {
+                id: None,
+                output_item_id: 97487u32,
+                output_item_count: 1,
+                disciplines: vec![
+                    config::Discipline::Armorsmith,
+                    config::Discipline::Artificer,
+                    config::Discipline::Huntsman,
+                    config::Discipline::Jeweler,
+                    config::Discipline::Leatherworker,
+                    config::Discipline::Tailor,
+                    config::Discipline::Weaponsmith,
+                ],
+                ingredients: vec![
+                    api::RecipeIngredient {
+                        item_id: 97102u32,
+                        count: 4,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 96052u32,
+                        count: 30,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 19721u32,
+                        count: 2,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 19685u32,
+                        count: 5,
+                    },
+                ],
+                source: RecipeSource::Automatic,
+            },
+            // Jade Bot Core Tier 1-10
+            Recipe {
+                id: None,
+                output_item_id: 97339u32,
+                output_item_count: 1,
+                disciplines: vec![
+                    config::Discipline::Jeweler,
+                ],
+                ingredients: vec![
+                    api::RecipeIngredient {
+                        item_id: 96052u32,
+                        count: 3,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 19679u32,
+                        count: 5,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 97487u32,
+                        count: 1,
+                    },
+                ],
+                source: RecipeSource::Purchasable,
+            },
+            Recipe {
+                id: None,
+                output_item_id: 97041u32,
+                output_item_count: 1,
+                disciplines: vec![
+                    config::Discipline::Jeweler,
+                ],
+                ingredients: vec![
+                    api::RecipeIngredient {
+                        item_id: 97339u32,
+                        count: 1,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 96052u32,
+                        count: 10,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 19680u32,
+                        count: 10,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 97487u32,
+                        count: 1,
+                    },
+                ],
+                source: RecipeSource::Purchasable,
+            },
+            Recipe {
+                id: None,
+                output_item_id: 97284u32,
+                output_item_count: 1,
+                disciplines: vec![
+                    config::Discipline::Jeweler,
+                ],
+                ingredients: vec![
+                    api::RecipeIngredient {
+                        item_id: 97041u32,
+                        count: 1,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 96052u32,
+                        count: 20,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 19683u32,
+                        count: 25,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 97487u32,
+                        count: 1,
+                    },
+                ],
+                source: RecipeSource::Purchasable,
+            },
+            Recipe {
+                id: None,
+                output_item_id: 96628u32,
+                output_item_count: 1,
+                disciplines: vec![
+                    config::Discipline::Jeweler,
+                ],
+                ingredients: vec![
+                    api::RecipeIngredient {
+                        item_id: 97284u32,
+                        count: 1,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 96052u32,
+                        count: 30,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 19687u32,
+                        count: 25,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 97487u32,
+                        count: 1,
+                    },
+                ],
+                source: RecipeSource::Purchasable,
+            },
+            Recipe {
+                id: None,
+                output_item_id: 95864u32,
+                output_item_count: 1,
+                disciplines: vec![
+                    config::Discipline::Jeweler,
+                ],
+                ingredients: vec![
+                    api::RecipeIngredient {
+                        item_id: 96628u32,
+                        count: 1,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 96052u32,
+                        count: 50,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 19688u32,
+                        count: 25,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 97487u32,
+                        count: 1,
+                    },
+                ],
+                source: RecipeSource::Purchasable,
+            },
+            Recipe {
+                id: None,
+                output_item_id: 96467u32,
+                output_item_count: 1,
+                disciplines: vec![
+                    config::Discipline::Jeweler,
+                ],
+                ingredients: vec![
+                    api::RecipeIngredient {
+                        item_id: 95864u32,
+                        count: 1,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 96052u32,
+                        count: 80,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 19682u32,
+                        count: 25,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 97487u32,
+                        count: 1,
+                    },
+                ],
+                source: RecipeSource::Purchasable,
+            },
+            Recipe {
+                id: None,
+                output_item_id: 97020u32,
+                output_item_count: 1,
+                disciplines: vec![
+                    config::Discipline::Jeweler,
+                ],
+                ingredients: vec![
+                    api::RecipeIngredient {
+                        item_id: 96467u32,
+                        count: 1,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 96052u32,
+                        count: 130,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 19686u32,
+                        count: 25,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 97487u32,
+                        count: 1,
+                    },
+                ],
+                source: RecipeSource::Purchasable,
+            },
+            Recipe {
+                id: None,
+                output_item_id: 96299u32,
+                output_item_count: 1,
+                disciplines: vec![
+                    config::Discipline::Jeweler,
+                ],
+                ingredients: vec![
+                    api::RecipeIngredient {
+                        item_id: 97020u32,
+                        count: 1,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 96052u32,
+                        count: 210,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 19684u32,
+                        count: 50,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 97487u32,
+                        count: 1,
+                    },
+                ],
+                source: RecipeSource::Purchasable,
+            },
+            Recipe {
+                id: None,
+                output_item_id: 96070u32,
+                output_item_count: 1,
+                disciplines: vec![
+                    config::Discipline::Jeweler,
+                ],
+                ingredients: vec![
+                    api::RecipeIngredient {
+                        item_id: 96299u32,
+                        count: 1,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 96052u32,
+                        count: 340,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 19685u32,
+                        count: 15,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 97487u32,
+                        count: 1,
+                    },
+                ],
+                source: RecipeSource::Purchasable,
+            },
+            Recipe {
+                id: None,
+                output_item_id: 96613u32,
+                output_item_count: 1,
+                disciplines: vec![
+                    config::Discipline::Jeweler,
+                ],
+                ingredients: vec![
+                    api::RecipeIngredient {
+                        item_id: 96070u32,
+                        count: 1,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 96052u32,
+                        count: 550,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 46743u32,
+                        count: 1,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 97487u32,
+                        count: 2,
+                    },
+                ],
+                source: RecipeSource::Purchasable,
+            },
+        ]
+    }
 }
 
 pub fn mark_recursive_recipes(recipes_map: &HashMap<u32, Recipe>) -> HashSet<u32> {

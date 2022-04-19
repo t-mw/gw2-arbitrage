@@ -88,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         CONFIG.items_file.display()
     );
 
-    let recipes: Vec<Recipe> = custom_recipes
+    let mut recipes: Vec<Recipe> = custom_recipes
         .into_iter()
         // prefer api recipes over custom recipes if they share the same output item id, by inserting them later
         .chain(api_recipes.into_iter().map(std::convert::From::from))
@@ -111,6 +111,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             true
         })
         .collect();
+    recipes.append(&mut Recipe::additional_recipes());
     let mut recipes_map = vec_to_map(recipes, |x| x.output_item_id);
     let items_map = vec_to_map(items, |x| x.id);
 
