@@ -119,6 +119,8 @@ impl CraftedItems {
         total_crafting_steps
     }
 
+    // TODO: merge w/recipes? The difference is there we need all regardless of what will be
+    // crafted; here we know what will be crafted.
     pub fn unknown_recipes(
         &self,
         recipes_map: &HashMap<u32, Recipe>,

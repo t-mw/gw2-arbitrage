@@ -143,6 +143,34 @@ impl Recipe {
         }
     }
 
+    pub fn collect_unknown_recipe_ids(
+        &self,
+        recipes_map: &HashMap<u32, Recipe>,
+        known_recipes: &Option<HashSet<u32>>,
+        unknown_recipes: &mut HashSet<u32>,
+    ) {
+        if let Some(id) = self.id.filter(|id| !unknown_recipes.contains(id)) {
+            if !self.is_automatic() {
+                // If we have no known recipes, assume we know none
+                if known_recipes
+                    .as_ref()
+                        .filter(|recipes| recipes.contains(&id))
+                        .is_none()
+                {
+                    unknown_recipes.insert(id);
+                }
+            }
+        }
+
+        for ingredient in &self.ingredients {
+            if let Some(recipe) = recipes_map.get(&ingredient.item_id) {
+                recipe.collect_unknown_recipe_ids(
+                    &recipes_map, &known_recipes, unknown_recipes
+                );
+            }
+        }
+    }
+
     pub fn additional_recipes() -> Vec<Recipe> {
         vec![
             // Piece of Dragon Jade

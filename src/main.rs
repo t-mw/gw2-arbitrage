@@ -137,23 +137,28 @@ async fn show_item_profit(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let item = items_map.get(&item_id).expect("Item not found");
 
-    let mut ingredient_ids = vec![];
+    let mut items_to_price = vec![];
+    let mut unknown_recipes = HashSet::new();
     if let Some(recipe) = recipes_map.get(&item_id) {
-        recipe.collect_ingredient_ids(&recipes_map, &mut ingredient_ids);
+        recipe.collect_ingredient_ids(&recipes_map, &mut items_to_price);
+        recipe.collect_unknown_recipe_ids(&recipes_map, &known_recipes, &mut unknown_recipes);
+
+        items_to_price.append(&mut items_map
+            .iter()
+            .filter_map(|(_, item)| {
+                if let Some(unlocks) = &item.recipe_unlocks() {
+                    if unlocks.iter().filter(|&recipe_id| unknown_recipes.contains(recipe_id)).count() > 0 {
+                        return Some(item.id);
+                    }
+                }
+                None
+            })
+            .collect()
+        );
     }
 
-    /*
-    let mut unknown_recipe_ids = vec![];
-    let unknown_recipes: Vec<u32> = collect_recipe_item_ids(item_id, &recipes_map, &known_recipes)
-        .crafted_items
-        .unknown_recipes(&recipes_map, &known_recipes)
-        .iter()
-        .map(|&id| id)
-        .collect();
-    */
-
     let mut request_listing_item_ids = vec![item_id];
-    request_listing_item_ids.extend(ingredient_ids);
+    request_listing_item_ids.extend(items_to_price);
     request_listing_item_ids.sort_unstable();
     request_listing_item_ids.dedup();
 
@@ -334,14 +339,23 @@ async fn show_item_profit(
         }
     }
 
-    let unknown_recipes: Vec<u32> = profitable_item
+    let required_unknown_recipes: Vec<u32> = profitable_item
         .crafted_items
-        .unknown_recipes(&recipes_map, &known_recipes)
-        .iter()
-        .map(|&id| id)
+        .crafted
+        .keys()
+        .filter_map(|item_id| {
+            if let Some(recipe) = recipes_map.get(item_id) {
+                if let Some(recipe_id) = recipe.id {
+                    if unknown_recipes.contains(&recipe_id) {
+                        return Some(recipe_id)
+                    }
+                }
+            }
+            None
+        })
         .collect();
-    if unknown_recipes.len() > 0 {
-        let req_recipes = unknown_recipes
+    if required_unknown_recipes.len() > 0 {
+        let req_recipes = required_unknown_recipes
             .iter()
             .map(|id| {
                 let recipe_names = items_map
@@ -354,20 +368,18 @@ async fn show_item_profit(
                         }
                     })
                     .map(|(_, item)| {
-                        /*
-                        // TODO: Would need to get price, which means up at
-                        // collect_ingredient_ids we'd need to also search for unknown recipes
-                        // at all levels, and add those to the market list
-                        if let Some(listing) = tp_listings_map.get(&id) {
-                            if listing.sells.len() > 0 {
-                                debug_assert!(listing.sells[0].unit_price < i32::MAX as u32);
+                        // Need to get price, which means up at collect_ingredient_ids we'd need to
+                        // also search for unknown recipes at all levels, and add those to the
+                        // market list
+                        if let Some(listing) = tp_listings_map.get(&item.id) {
+                            if let Some(cheapest_sell_order) = listing.sells.last() {
+                                debug_assert!(cheapest_sell_order.unit_price < i32::MAX as u32);
                                 return format!(
                                     "{}, buy for {}", &item.name,
-                                    Money::from_copper(listing.sells[0].unit_price as i32)
+                                    Money::from_copper(cheapest_sell_order.unit_price as i32)
                                 );
                             }
                         }
-                        */
                         format!("{}", &item.name)
                     })
                     .collect::<Vec<String>>()
@@ -387,7 +399,7 @@ async fn show_item_profit(
                 Some(_) => "can not",
                 None => "may not be able to",
             },
-            if unknown_recipes.len() > 1 { "s" } else { "" },
+            if required_unknown_recipes.len() > 1 { "s" } else { "" },
             req_recipes,
         );
     }
