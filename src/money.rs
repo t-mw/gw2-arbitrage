@@ -25,6 +25,7 @@ pub struct Money {
     karma: Rational32,
     um: Rational32,
     vm: Rational32,
+    rn: Rational32,
 }
 impl Money {
     pub fn from_copper(copper: i32) -> Self {
@@ -51,12 +52,19 @@ impl Money {
             ..Default::default()
         }
     }
-    pub fn new(copper: i32, karma: i32, um: i32, vm: i32) -> Self {
+    pub fn from_rn(rn: i32) -> Self {
+        Self {
+            rn: Rational32::from(rn),
+            ..Default::default()
+        }
+    }
+    pub fn new(copper: i32, karma: i32, um: i32, vm: i32, rn: i32) -> Self {
         Self {
             copper: Rational32::from(copper),
             karma: Rational32::from(karma),
             um: Rational32::from(um),
             vm: Rational32::from(vm),
+            rn: Rational32::from(rn),
         }
     }
 
@@ -65,6 +73,7 @@ impl Money {
          + self.karma * CONFIG.karma.unwrap_or(Rational32::zero())
          + self.um * CONFIG.um.unwrap_or(Rational32::zero())
          + self.vm * CONFIG.vm.unwrap_or(Rational32::zero())
+         + self.rn * CONFIG.rn.unwrap_or(Rational32::zero())
     }
     pub fn to_copper_value(&self) -> i32 {
         self.copper_value().ceil().to_integer()
@@ -104,6 +113,7 @@ impl Money {
             karma: self.karma,
             um: self.um,
             vm: self.vm,
+            rn: self.rn,
         }
     }
 
@@ -142,6 +152,10 @@ impl fmt::Display for Money {
             currencies.push(format!("{} VM", self.vm.to_integer()));
         }
 
+        if self.rn != Rational32::zero() {
+            currencies.push(format!("{} RN", self.rn.to_integer()));
+        }
+
         write!(f, "{}", currencies.join(", "))
     }
 }
@@ -157,6 +171,7 @@ impl Zero for Money {
             karma: Rational32::zero(),
             um: Rational32::zero(),
             vm: Rational32::zero(),
+            rn: Rational32::zero(),
         }
     }
     fn is_zero(&self) -> bool {
@@ -172,6 +187,7 @@ impl std::ops::Add for Money {
             karma: self.karma + other.karma,
             um: self.um + other.um,
             vm: self.vm + other.vm,
+            rn: self.rn + other.rn,
         }
     }
 }
@@ -184,6 +200,7 @@ impl std::ops::Sub for Money {
             karma: self.karma - other.karma,
             um: self.um - other.um,
             vm: self.vm - other.vm,
+            rn: self.rn - other.rn,
         }
     }
 }
@@ -194,6 +211,7 @@ impl std::ops::AddAssign for Money {
             karma: self.karma + other.karma,
             um: self.um + other.um,
             vm: self.vm + other.vm,
+            rn: self.rn + other.rn,
         }
     }
 }
@@ -206,6 +224,7 @@ impl std::ops::Mul<u32> for Money {
             karma: self.karma * other as i32,
             um: self.um * other as i32,
             vm: self.vm * other as i32,
+            rn: self.rn * other as i32,
         }
     }
 }
@@ -218,6 +237,7 @@ impl std::ops::Div<u32> for Money {
             karma: self.karma / other as i32,
             um: self.um / other as i32,
             vm: self.vm / other as i32,
+            rn: self.rn / other as i32,
         }
     }
 }
@@ -227,6 +247,7 @@ impl PartialEq for Money {
             && self.karma == other.karma
             && self.um == other.um
             && self.vm == other.vm
+            && self.rn == other.rn
     }
 }
 impl PartialOrd for Money {
@@ -249,6 +270,7 @@ impl std::iter::Sum for Money {
             sink.karma += src.karma;
             sink.um += src.um;
             sink.vm += src.vm;
+            sink.rn += src.rn;
         }
         sink
     }

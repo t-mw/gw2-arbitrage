@@ -39,6 +39,7 @@ pub struct Config {
     pub karma: Option<Rational32>,
     pub um: Option<Rational32>,
     pub vm: Option<Rational32>,
+    pub rn: Option<Rational32>,
 
     pub cache_dir: PathBuf,
     pub api_recipes_file: PathBuf,
@@ -140,6 +141,18 @@ impl Config {
             Rational32::approximate_float(value)
         } else if let Some(currencies) = &file.currencies {
             if let Some(value) = currencies.vm {
+                Rational32::approximate_float(value)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        config.rn = if let Some(value) = opt.rn {
+            Rational32::approximate_float(value)
+        } else if let Some(currencies) = &file.currencies {
+            if let Some(value) = currencies.rn {
                 Rational32::approximate_float(value)
             } else {
                 None
@@ -252,6 +265,7 @@ struct ConfigFileCurrencySection {
     karma: Option<f64>,
     um: Option<f64>,
     vm: Option<f64>,
+    rn: Option<f64>,
 }
 #[derive(Debug, Default, Deserialize)]
 struct ConfigFileBlacklistSection {
@@ -322,6 +336,10 @@ struct Opt {
     /// Include recipes that use LW4 map tokens, using this conversion factor as the opportunity cost
     #[structopt(long)]
     vm: Option<f64>,
+
+    /// Include recipes that use research notes, using this conversion factor as the opportunity cost
+    #[structopt(long)]
+    rn: Option<f64>,
 }
 
 static CACHE_DIR_HELP: Lazy<String> = Lazy::new(|| {
