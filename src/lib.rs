@@ -6,3 +6,4 @@ pub mod request;
 pub mod money;
 pub mod recipe;
 pub mod item;
+pub mod profit;

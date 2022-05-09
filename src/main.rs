@@ -1,5 +1,4 @@
 use colored::Colorize;
-use rayon::prelude::*;
 use serde::Serialize;
 
 use std::cmp::Ordering;
@@ -12,20 +11,6 @@ use recipe::Recipe;
 use item::Item;
 
 const ITEM_STACK_SIZE: u32 = 250; // GW2 uses a "stack size" of 250
-
-#[derive(Debug, Serialize)]
-struct OutputRow {
-    name: String,
-    disciplines: String,
-    item_id: u32,
-    unknown_recipes: Vec<u32>,
-    total_profit: String,
-    number_required: u32,
-    profit_per_item: i32,
-    crafting_steps: u32,
-    profit_per_step: i32,
-    profit_on_cost: f64,
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -112,8 +97,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
     recipes.append(&mut Recipe::additional_recipes());
-    let mut recipes_map = vec_to_map(recipes, |x| x.output_item_id);
-    let items_map = vec_to_map(items, |x| x.id);
+    let mut recipes_map = profit::vec_to_map(recipes, |x| x.output_item_id);
+    let items_map = profit::vec_to_map(items, |x| x.id);
 
     let recursive_recipes = recipe::mark_recursive_recipes(&recipes_map);
     for recipe_id in recursive_recipes.into_iter() {
@@ -121,65 +106,59 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if let Some(item_id) = CONFIG.item_id {
-        show_item_profit(item_id, recipes_map, &items_map, &known_recipes).await?;
+        let item = items_map.get(&item_id).expect("Item not found");
+        let (profitable_item, purchased_ingredients, required_unknown_recipes, tp_listings_map) = profit::calc_item_profit(
+            item_id, &recipes_map, &items_map, &known_recipes
+        ).await?;
+        print_profitable_item(
+            &item,
+            &profitable_item, &purchased_ingredients, &required_unknown_recipes, &tp_listings_map,
+            &recipes_map, &items_map, &known_recipes,
+        )?;
     } else {
-        find_profitable_items(recipes_map, &items_map, &known_recipes).await?;
+        println!("Loading trading post prices");
+        let tp_prices: Vec<api::Price> = request::request_paginated("commerce/prices", &None).await?;
+        println!("Loaded {} trading post prices", tp_prices.len());
+
+        let tp_prices_map = profit::vec_to_map(tp_prices, |x| x.id);
+
+        let (profitable_item_ids, ingredient_ids) = profit::find_profitable_items(&tp_prices_map, &recipes_map, &items_map);
+
+        println!("Loading detailed trading post listings");
+        let mut request_listing_item_ids = vec![];
+        request_listing_item_ids.extend(&profitable_item_ids);
+        request_listing_item_ids.extend(ingredient_ids);
+        request_listing_item_ids.sort_unstable();
+        request_listing_item_ids.dedup();
+        // Caching these is pointless, as the vector changes on each run, leading to new URLs
+        let tp_listings = request::fetch_item_listings(&request_listing_item_ids, None).await?;
+        println!(
+            "Loaded {} detailed trading post listings",
+            tp_listings.len()
+        );
+        let tp_listings_map = profit::vec_to_map(tp_listings, |x| x.id);
+
+        let profitable_items = profit::profitable_item_list(
+            &tp_listings_map, &profitable_item_ids, &request_listing_item_ids, &recipes_map, &items_map
+        );
+
+        print_item_list(&profitable_items, &recipes_map, &items_map, &known_recipes)?;
     }
 
     Ok(())
 }
 
-async fn show_item_profit(
-    item_id: u32,
-    recipes_map: HashMap<u32, Recipe>,
+/// Print detailed information about a profitable item
+fn print_profitable_item(
+    item: &Item,
+    profitable_item: &Option<crafting::ProfitableItem>,
+    purchased_ingredients: &HashMap<(u32, crafting::Source), crafting::PurchasedIngredient>,
+    required_unknown_recipes: &Vec<u32>,
+    tp_listings_map: &HashMap<u32, api::ItemListings>,
+    recipes_map: &HashMap<u32, Recipe>,
     items_map: &HashMap<u32, Item>,
     known_recipes: &Option<HashSet<u32>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let item = items_map.get(&item_id).expect("Item not found");
-
-    let mut items_to_price = vec![];
-    let mut unknown_recipes = HashSet::new();
-    if let Some(recipe) = recipes_map.get(&item_id) {
-        recipe.collect_ingredient_ids(&recipes_map, &mut items_to_price);
-        recipe.collect_unknown_recipe_ids(&recipes_map, &known_recipes, &mut unknown_recipes);
-
-        items_to_price.append(&mut items_map
-            .iter()
-            .filter_map(|(_, item)| {
-                if let Some(unlocks) = &item.recipe_unlocks() {
-                    if unlocks.iter().filter(|&recipe_id| unknown_recipes.contains(recipe_id)).count() > 0 {
-                        return Some(item.id);
-                    }
-                }
-                None
-            })
-            .collect()
-        );
-    }
-
-    let mut request_listing_item_ids = vec![item_id];
-    request_listing_item_ids.extend(items_to_price);
-    request_listing_item_ids.sort_unstable();
-    request_listing_item_ids.dedup();
-
-    let tp_listings =
-        request::fetch_item_listings(&request_listing_item_ids, Some(&CONFIG.cache_dir))
-            .await?;
-    let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
-
-    let mut purchased_ingredients = Default::default();
-    let profitable_item = crafting::calculate_crafting_profit(
-        item_id,
-        &recipes_map,
-        &items_map,
-        &tp_listings_map,
-        Some(&mut purchased_ingredients),
-        &config::CraftingOptions {
-            include_timegated: true,
-            ..CONFIG.crafting
-        },
-    );
-
     let profitable_item = if let Some(item) = profitable_item {
         item
     } else {
@@ -319,9 +298,9 @@ async fn show_item_profit(
     println!("Max inventory slots: {}", inventory + 1); // + 1 for the crafting output
     println!(
         "Crafting steps: https://gw2efficiency.com/crafting/calculator/a~1!b~1!c~1!d~{}-{}",
-        profitable_item.count, item_id
+        profitable_item.count, item.id
     );
-    for (item_id, count, recipe) in profitable_item.crafted_items.sorted(item_id, &recipes_map) {
+    for (item_id, count, recipe) in profitable_item.crafted_items.sorted(item.id, &recipes_map) {
         let num_crafted = count / recipe.output_item_count;
         let item_name = items_map
             .get(&item_id)
@@ -339,21 +318,6 @@ async fn show_item_profit(
         }
     }
 
-    let required_unknown_recipes: Vec<u32> = profitable_item
-        .crafted_items
-        .crafted
-        .keys()
-        .filter_map(|item_id| {
-            if let Some(recipe) = recipes_map.get(item_id) {
-                if let Some(recipe_id) = recipe.id {
-                    if unknown_recipes.contains(&recipe_id) {
-                        return Some(recipe_id)
-                    }
-                }
-            }
-            None
-        })
-        .collect();
     if required_unknown_recipes.len() > 0 {
         let req_recipes = required_unknown_recipes
             .iter()
@@ -404,10 +368,9 @@ async fn show_item_profit(
         );
     }
 
-    let leftovers = profitable_item.crafted_items.leftovers;
-    if !leftovers.is_empty() {
+    if !profitable_item.crafted_items.leftovers.is_empty() {
         println!("Leftovers:");
-        for (leftover_id, (count, cost, _)) in leftovers.iter() {
+        for (leftover_id, (count, cost, _)) in profitable_item.crafted_items.leftovers.iter() {
             println!(
                 "{} {}, breakeven: {} each",
                 count,
@@ -422,114 +385,27 @@ async fn show_item_profit(
     return Ok(());
 }
 
-async fn find_profitable_items(
-    recipes_map: HashMap<u32, Recipe>,
+#[derive(Debug, Serialize)]
+struct OutputRow {
+    name: String,
+    disciplines: String,
+    item_id: u32,
+    unknown_recipes: Vec<u32>,
+    total_profit: String,
+    number_required: u32,
+    profit_per_item: i32,
+    crafting_steps: u32,
+    profit_per_step: i32,
+    profit_on_cost: f64,
+}
+
+/// List profitable items to screen or CSV
+fn print_item_list(
+    profitable_items: &Vec<crafting::ProfitableItem>,
+    recipes_map: &HashMap<u32, Recipe>,
     items_map: &HashMap<u32, Item>,
     known_recipes: &Option<HashSet<u32>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Loading trading post prices");
-    let tp_prices: Vec<api::Price> = request::request_paginated("commerce/prices", &None).await?;
-    println!("Loaded {} trading post prices", tp_prices.len());
-
-    let tp_prices_map = vec_to_map(tp_prices, |x| x.id);
-
-    let mut profitable_item_ids = vec![];
-    let mut ingredient_ids = vec![];
-    for (item_id, recipe) in &recipes_map {
-        if let Some(item) = items_map.get(item_id) {
-            // we cannot sell restricted items
-            if item.is_restricted() {
-                continue;
-            }
-        }
-
-        if let Some(filter_disciplines) = &CONFIG.filter_disciplines {
-            let mut has_discipline = false;
-            for discipline in filter_disciplines {
-                if recipe.disciplines.iter().any(|s| s == discipline) {
-                    has_discipline = true;
-                    break;
-                }
-            }
-
-            if !has_discipline {
-                continue;
-            }
-        }
-
-        // some items are craftable and have no listed restrictions but are still not listable on tp
-        // e.g. 39417, 79557
-        // conversely, some items have a NoSell flag but are listable on the trading post
-        // e.g. 66917
-        let tp_prices = match tp_prices_map.get(item_id) {
-            Some(tp_prices) if tp_prices.sells.quantity > 0 => tp_prices,
-            _ => continue,
-        };
-
-        if let Some(crafting::EstimatedCraftingCost {
-            source: crafting::Source::Crafting,
-            cost: crafting_cost,
-        }) = crafting::calculate_estimated_min_crafting_cost(
-            *item_id,
-            &recipes_map,
-            &items_map,
-            &tp_prices_map,
-            &CONFIG.crafting,
-        ) {
-            let effective_buy_price = Money::from_copper(tp_prices.buys.unit_price as i32)
-                .trading_post_sale_revenue();
-            if effective_buy_price > crafting_cost {
-                profitable_item_ids.push(*item_id);
-                if let Some(recipe) = recipes_map.get(&item_id) {
-                    recipe.collect_ingredient_ids(&recipes_map, &mut ingredient_ids);
-                }
-            }
-        }
-    }
-
-    println!("Loading detailed trading post listings");
-    let mut request_listing_item_ids = vec![];
-    request_listing_item_ids.extend(&profitable_item_ids);
-    request_listing_item_ids.extend(ingredient_ids);
-    request_listing_item_ids.sort_unstable();
-    request_listing_item_ids.dedup();
-    // Caching these is pointless, as the vector changes on each run, leading to new URLs
-    let tp_listings = request::fetch_item_listings(&request_listing_item_ids, None).await?;
-    println!(
-        "Loaded {} detailed trading post listings",
-        tp_listings.len()
-    );
-    let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
-
-    let mut profitable_items: Vec<_> = profitable_item_ids
-        .par_iter()
-        .filter_map(|item_id| {
-            let mut ingredient_ids = vec![*item_id];
-            if let Some(recipe) = recipes_map.get(&item_id) {
-                recipe.collect_ingredient_ids(&recipes_map, &mut ingredient_ids);
-            }
-
-            let mut tp_listings_map_for_item: HashMap<u32, _> = HashMap::new();
-            for id in ingredient_ids {
-                debug_assert!(request_listing_item_ids.contains(&id));
-                if let Some(listing) = tp_listings_map.get(&id).cloned() {
-                    tp_listings_map_for_item.insert(id, listing);
-                }
-            }
-
-            crafting::calculate_crafting_profit(
-                *item_id,
-                &recipes_map,
-                &items_map,
-                &tp_listings_map_for_item,
-                None,
-                &CONFIG.crafting,
-            )
-        })
-        .collect();
-
-    profitable_items.sort_unstable_by_key(|item| item.profit);
-
     let mut csv_writer = if let Some(path) = &CONFIG.output_csv {
         Some(csv::Writer::from_path(path)?)
     } else {
@@ -562,7 +438,7 @@ async fn find_profitable_items(
 
     println!("{}", header);
     println!("{}", "=".repeat(header.len()));
-    for profitable_item in &profitable_items {
+    for profitable_item in profitable_items {
         // Only required when prices are cached.
         // Profit may end up being 0, since potential profitable items are selected based
         // on cached prices, but the actual profit is calculated using detailed listings and
@@ -650,17 +526,6 @@ async fn find_profitable_items(
     }
 
     Ok(())
-}
-
-fn vec_to_map<T, F>(v: Vec<T>, id_fn: F) -> HashMap<u32, T>
-where
-    F: Fn(&T) -> u32,
-{
-    let mut map = HashMap::default();
-    for x in v.into_iter() {
-        map.insert(id_fn(&x), x);
-    }
-    map
 }
 
 trait DivCeil {
