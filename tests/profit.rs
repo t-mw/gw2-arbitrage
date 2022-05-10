@@ -1,7 +1,9 @@
 use gw2_arbitrage::{
-    api::{self, Item, ItemListings, Listing, RecipeIngredient},
+    api::{self, ItemListings, Listing, RecipeIngredient},
+    item::Item,
     config::Discipline,
-    crafting::{self, PurchasedIngredient, Recipe, CraftedItems},
+    crafting::{self, PurchasedIngredient, CraftedItems},
+    recipe::Recipe,
     money::Money,
 };
 
@@ -205,7 +207,7 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
             (
                 (thermocatalytic_reagent_item_id, crafting::Source::Vendor),
                 PurchasedIngredient {
-                    count: 4,
+                    count: 10, // min purchase quantity
                     min_price: Money::from_copper(0),
                     max_price: Money::from_copper(0),
                     total_cost: Money::from_copper(0),
@@ -233,6 +235,8 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
     let mut crafted = HashMap::new();
     crafted.insert(plus_14_item_id + 1, 4);
     crafted.insert(plus_16_item_id, 2);
+    let mut leftovers: HashMap<u32, (u32, Money, crafting::Source)> = HashMap::new();
+    leftovers.insert(thermocatalytic_reagent_item_id, (6, Money::from_copper(1496)/10, crafting::Source::Vendor));
     assert_eq!(
         profitable_item,
         Some(crafting::ProfitableItem {
@@ -248,7 +252,7 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
             crafting_steps: 6,
             crafted_items: CraftedItems {
                 crafted,
-                leftovers: Default::default(),
+                leftovers,
             },
         })
     );
@@ -602,8 +606,8 @@ fn calculate_crafting_profit_with_subitem_leftovers() {
         + (50 * 2 * 4 + 30 * 4), // +4 = 51
     );
     // One leftover, not profitable at 100
-    let mut leftovers: HashMap<u32, (u32, Money)> = HashMap::new();
-    leftovers.insert(2100, (1, Money::from_copper(30)));
+    let mut leftovers: HashMap<u32, (u32, Money, crafting::Source)> = HashMap::new();
+    leftovers.insert(2100, (1, Money::from_copper(30), crafting::Source::Crafting));
     let mut crafted = HashMap::new();
     crafted.insert(1000, 51);
     crafted.insert(2100, 40);

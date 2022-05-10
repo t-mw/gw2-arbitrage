@@ -19,7 +19,7 @@ const TRADING_POST_EXCHANGE_FEE: u8 = 10; // %
 // badges of honor? Testimony/proof of heroics
 // Geodes, Bandit Crests, Airship Parts, Aurillium, Ley Crystals, Trade Contracts, Racing Medallions
 // Fractal Relics
-#[derive(Debug, Copy, Clone, Eq)]
+#[derive(Copy, Clone, Eq)]
 pub struct Money {
     copper: Rational32,
     karma: Rational32,
@@ -273,6 +273,42 @@ impl std::iter::Sum for Money {
             sink.rn += src.rn;
         }
         sink
+    }
+}
+
+impl fmt::Debug for Money {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut result = f.debug_struct("Money");
+
+        if self.copper != Rational32::zero() {
+            let copper = self.copper.to_integer();
+            let sign = if copper < 0 { "-" } else { "" };
+            let copper = copper.abs();
+
+            let gold = copper / 10000;
+            let silver = (copper - gold * 10000) / 100;
+            let copper = copper - gold * 10000 - silver * 100;
+
+            result.field("copper", &format!("{}{}.{:02}.{:02}g", sign, gold, silver, copper));
+        }
+
+        if self.karma != Rational32::zero() {
+            result.field("karma", &self.karma.to_integer());
+        }
+
+        if self.um != Rational32::zero() {
+            result.field("um", &self.um.to_integer());
+        }
+
+        if self.vm != Rational32::zero() {
+            result.field("vm", &self.vm.to_integer());
+        }
+
+        if self.rn != Rational32::zero() {
+            result.field("rn", &self.rn.to_integer());
+        }
+
+        result.finish()
     }
 }
 
