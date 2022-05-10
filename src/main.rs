@@ -107,12 +107,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(item_id) = CONFIG.item_id {
         let item = items_map.get(&item_id).expect("Item not found");
-        let (profitable_item, purchased_ingredients, required_unknown_recipes, tp_listings_map) = profit::calc_item_profit(
+        let (profitable_item, purchased_ingredients, required_unknown_recipes, recipe_prices) = profit::calc_item_profit(
             item_id, &recipes_map, &items_map, &known_recipes
         ).await?;
         print_profitable_item(
             &item,
-            &profitable_item, &purchased_ingredients, &required_unknown_recipes, &tp_listings_map,
+            &profitable_item, &purchased_ingredients, &required_unknown_recipes, &recipe_prices,
             &recipes_map, &items_map, &known_recipes,
         )?;
     } else {
@@ -154,7 +154,7 @@ fn print_profitable_item(
     profitable_item: &Option<crafting::ProfitableItem>,
     purchased_ingredients: &HashMap<(u32, crafting::Source), crafting::PurchasedIngredient>,
     required_unknown_recipes: &Vec<u32>,
-    tp_listings_map: &HashMap<u32, api::ItemListings>,
+    recipe_prices: &HashMap<u32, api::Price>,
     recipes_map: &HashMap<u32, Recipe>,
     items_map: &HashMap<u32, Item>,
     known_recipes: &Option<HashSet<u32>>,
@@ -335,14 +335,12 @@ fn print_profitable_item(
                         // Need to get price, which means up at collect_ingredient_ids we'd need to
                         // also search for unknown recipes at all levels, and add those to the
                         // market list
-                        if let Some(listing) = tp_listings_map.get(&item.id) {
-                            if let Some(cheapest_sell_order) = listing.sells.last() {
-                                debug_assert!(cheapest_sell_order.unit_price < i32::MAX as u32);
-                                return format!(
-                                    "{}, buy for {}", &item.name,
-                                    Money::from_copper(cheapest_sell_order.unit_price as i32)
-                                );
-                            }
+                        if let Some(listing) = recipe_prices.get(&item.id) {
+                            debug_assert!(listing.sells.unit_price < i32::MAX as u32);
+                            return format!(
+                                "{}, buy for {}", &item.name,
+                                Money::from_copper(listing.sells.unit_price as i32)
+                            );
                         }
                         format!("{}", &item.name)
                     })

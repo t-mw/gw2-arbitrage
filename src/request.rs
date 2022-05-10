@@ -150,7 +150,7 @@ where
     serde_path_to_error::deserialize(de).map_err(|e| e.into())
 }
 
-async fn request_item_ids<T>(
+pub async fn request_item_ids<T>(
     url_path: &str,
     item_ids: &[u32],
     cache_dir: Option<&PathBuf>,

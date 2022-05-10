@@ -124,17 +124,17 @@ pub async fn calc_item_profit(
     Option<crafting::ProfitableItem>,
     HashMap<(u32, crafting::Source), crafting::PurchasedIngredient>,
     Vec<u32>,
-    HashMap<u32, api::ItemListings>,
+    HashMap<u32, api::Price>,
 ), Box<dyn std::error::Error>> {
     let mut items_to_price = vec![];
 
     let mut unknown_recipes = HashSet::new();
+    let mut recipe_prices = Default::default();
     if let Some(recipe) = recipes_map.get(&item_id) {
         recipe.collect_ingredient_ids(&recipes_map, &mut items_to_price);
-        // TODO: use commerce/prices?ids=x,y,... for the recipes; just need to know the min sell value
-        recipe.collect_unknown_recipe_ids(&recipes_map, &known_recipes, &mut unknown_recipes);
 
-        items_to_price.append(&mut items_map
+        recipe.collect_unknown_recipe_ids(&recipes_map, &known_recipes, &mut unknown_recipes);
+        let recipe_items: Vec<u32> = items_map
             .iter()
             .filter_map(|(_, item)| {
                 if let Some(unlocks) = &item.recipe_unlocks() {
@@ -144,8 +144,9 @@ pub async fn calc_item_profit(
                 }
                 None
             })
-            .collect()
-        );
+            .collect();
+        let prices: Vec<api::Price> = request::request_item_ids("commerce/prices", &recipe_items, None).await?;
+        recipe_prices = vec_to_map(prices, |x| x.id);
     }
 
     let mut request_listing_item_ids = vec![item_id];
@@ -191,7 +192,7 @@ pub async fn calc_item_profit(
         Default::default()
     };
 
-    Ok((profitable_item, purchased_ingredients, required_unknown_recipes, tp_listings_map))
+    Ok((profitable_item, purchased_ingredients, required_unknown_recipes, recipe_prices))
 }
 
 pub fn vec_to_map<T, F>(v: Vec<T>, id_fn: F) -> HashMap<u32, T>
