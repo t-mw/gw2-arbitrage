@@ -64,9 +64,11 @@ pub struct Recipe {
     pub ingredients: Vec<api::RecipeIngredient>,
 }
 
-pub async fn fetch_custom_recipes() -> Result<Vec<recipe::Recipe>, Box<dyn std::error::Error>> {
+pub async fn fetch_custom_recipes(notify: Option<&dyn Fn(&str)>) -> Result<Vec<recipe::Recipe>, Box<dyn std::error::Error>> {
     let url = "https://raw.githubusercontent.com/gw2efficiency/custom-recipes/master/recipes.json";
-    println!("Fetching {}", url);
+    if let Some(notify) = notify {
+        notify(&url);
+    }
 
     let custom_recipes: Vec<Recipe> = reqwest::get(url).await?.json().await?;
 

@@ -25,9 +25,10 @@ const MAX_ITEM_ID_LENGTH: i32 = 200; // error returned for greater than this amo
 pub async fn fetch_item_listings(
     item_ids: &[u32],
     cache_dir: Option<&PathBuf>,
+    notify: Option<&dyn Fn(&str)>,
 ) -> Result<Vec<ItemListings>, Box<dyn std::error::Error>> {
     let mut tp_listings: Vec<ItemListings> =
-        request_item_ids("commerce/listings", item_ids, cache_dir).await?;
+        request_item_ids("commerce/listings", item_ids, cache_dir, notify).await?;
 
     for listings in &mut tp_listings {
         // by default sells are listed in ascending and buys in descending price.
@@ -73,6 +74,7 @@ where
 pub async fn request_paginated<T>(
     url_path: &str,
     lang: &Option<config::Language>,
+    notify: Option<&dyn Fn(&str)>,
 ) -> Result<Vec<T>, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
@@ -82,7 +84,7 @@ where
     let mut page_total = None;
 
     // update page total with first request
-    let mut items: Vec<T> = request_page(url_path, page_no, &mut page_total, lang).await?;
+    let mut items: Vec<T> = request_page(url_path, page_no, &mut page_total, lang, notify).await?;
 
     // fetch remaining pages in parallel batches
     page_no += 1;
@@ -91,7 +93,7 @@ where
     let page_total = page_total.expect("Missing page total") + 1;
 
     let request_results = stream::iter((page_no..page_total).map(|page_no| async move {
-        request_page::<T>(url_path, page_no, &mut Some(page_total), lang).await
+        request_page::<T>(url_path, page_no, &mut Some(page_total), lang, notify).await
     }))
     .buffered(PARALLEL_REQUESTS)
     .collect::<Vec<Result<Vec<T>, Box<dyn std::error::Error>>>>()
@@ -110,6 +112,7 @@ async fn request_page<T>(
     page_no: usize,
     page_total: &mut Option<usize>,
     lang: &Option<config::Language>,
+    notify: Option<&dyn Fn(&str)>,
 ) -> Result<Vec<T>, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
@@ -127,7 +130,9 @@ where
         )
     };
 
-    println!("Fetching {}", url);
+    if let Some(notify) = notify {
+        notify(&url);
+    }
     let response = reqwest::get(&url).await?;
     if page_total.is_none() {
         let page_total_str = response
@@ -154,6 +159,7 @@ pub async fn request_item_ids<T>(
     url_path: &str,
     item_ids: &[u32],
     cache_dir: Option<&PathBuf>,
+    notify: Option<&dyn Fn(&str)>,
 ) -> Result<Vec<T>, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
@@ -171,7 +177,7 @@ where
         );
         if let Some(cache_dir) = cache_dir {
             result.extend(
-                cached_fetch::<Vec<T>>(&url, None, cache_dir)
+                cached_fetch::<Vec<T>>(&url, cache_dir, notify)
                     .await?
                     .into_iter(),
             );
@@ -186,17 +192,23 @@ where
 pub async fn fetch_account_recipes(
     key: &str,
     cache_dir: &PathBuf,
+    notify: Option<&dyn Fn(&str)>,
 ) -> Result<HashSet<u32>, Box<dyn std::error::Error>> {
     let base = "https://api.guildwars2.com/v2/account/recipes?access_token=";
     let url = format!("{}{}", base, key);
-    let display = format!("{}{}", base, "<api-key>");
-    Ok(cached_fetch(&url, Some(&display), cache_dir).await?)
+    if let Some(notify) = notify {
+        let display = format!("{}{}", base, "<api-key>");
+        let private = |_url: &str| { notify(&display) };
+        Ok(cached_fetch(&url, cache_dir, Some(&private as &dyn Fn(&str))).await?)
+    } else {
+        Ok(cached_fetch(&url, cache_dir, None).await?)
+    }
 }
 
 async fn cached_fetch<T>(
     url: &str,
-    display: Option<&str>,
     cache_dir: &Path,
+    notify: Option<&dyn Fn(&str)>,
 ) -> Result<T, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
@@ -209,7 +221,7 @@ where
         return Ok(v);
     }
 
-    let v = fetch(&url, display).await?;
+    let v = fetch(&url, notify).await?;
 
     // save cache file
     let file = File::create(cache_path)?;
@@ -219,15 +231,13 @@ where
     Ok(v)
 }
 
-async fn fetch<T>(url: &str, display: Option<&str>) -> Result<T, Box<dyn std::error::Error>>
+async fn fetch<T>(url: &str, notify: Option<&dyn Fn(&str)>) -> Result<T, Box<dyn std::error::Error>>
 where
     T: serde::Serialize,
     T: serde::de::DeserializeOwned,
 {
-    if let Some(url) = display {
-        println!("Fetching {}", url);
-    } else {
-        println!("Fetching {}", url);
+    if let Some(notify) = notify {
+        notify(&url.to_string());
     }
 
     let response = reqwest::get(url).await?;

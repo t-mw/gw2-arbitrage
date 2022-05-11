@@ -14,9 +14,12 @@ const ITEM_STACK_SIZE: u32 = 250; // GW2 uses a "stack size" of 250
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let notify_print = |url: &str| println!("Fetching {}", url);
+    let notify = Some(&notify_print as &dyn Fn(&str));
+
     let known_recipes = if let Some(key) = &CONFIG.api_key {
         Some(
-            request::fetch_account_recipes(&key, &CONFIG.cache_dir)
+            request::fetch_account_recipes(&key, &CONFIG.cache_dir, notify)
                 .await
                 .map_err(|e| format!("API error fetching recipe unlocks: {}", e))?,
         )
@@ -27,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Loading recipes");
     let api_recipes = {
         let mut api_recipes: Vec<api::Recipe> = request::get_data(&CONFIG.api_recipes_file, || {
-            request::request_paginated("recipes", &None)
+            request::request_paginated("recipes", &None, notify)
         })
         .await?;
         // If a recipe has no disciplines it cannot be crafted or discovered.
@@ -44,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Loading custom recipes");
     let custom_recipes: Vec<Recipe> = request::get_data(
         &CONFIG.custom_recipes_file,
-        gw2efficiency::fetch_custom_recipes,
+        || gw2efficiency::fetch_custom_recipes(notify),
     )
     .await
     .unwrap_or_else(|e| {
@@ -60,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Loading items");
     let items: Vec<Item> = request::get_data(&CONFIG.items_file, || async {
         let api_items: Vec<api::ApiItem> =
-            request::request_paginated("items", &CONFIG.lang).await?;
+            request::request_paginated("items", &CONFIG.lang, notify).await?;
         Ok(api_items
             .into_iter()
             .map(|api_item| Item::from(api_item))
@@ -108,7 +111,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(item_id) = CONFIG.item_id {
         let item = items_map.get(&item_id).expect("Item not found");
         let (profitable_item, purchased_ingredients, required_unknown_recipes, recipe_prices) = profit::calc_item_profit(
-            item_id, &recipes_map, &items_map, &known_recipes
+            item_id, &recipes_map, &items_map, &known_recipes, notify,
         ).await?;
         print_profitable_item(
             &item,
@@ -117,7 +120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
     } else {
         println!("Loading trading post prices");
-        let tp_prices: Vec<api::Price> = request::request_paginated("commerce/prices", &None).await?;
+        let tp_prices: Vec<api::Price> = request::request_paginated("commerce/prices", &None, notify).await?;
         println!("Loaded {} trading post prices", tp_prices.len());
 
         let tp_prices_map = profit::vec_to_map(tp_prices, |x| x.id);
@@ -131,7 +134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         request_listing_item_ids.sort_unstable();
         request_listing_item_ids.dedup();
         // Caching these is pointless, as the vector changes on each run, leading to new URLs
-        let tp_listings = request::fetch_item_listings(&request_listing_item_ids, None).await?;
+        let tp_listings = request::fetch_item_listings(&request_listing_item_ids, None, notify).await?;
         println!(
             "Loaded {} detailed trading post listings",
             tp_listings.len()

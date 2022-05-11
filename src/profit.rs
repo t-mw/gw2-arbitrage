@@ -120,6 +120,7 @@ pub async fn calc_item_profit(
     recipes_map: &HashMap<u32, Recipe>,
     items_map: &HashMap<u32, Item>,
     known_recipes: &Option<HashSet<u32>>,
+    notify: Option<&dyn Fn(&str)>,
 ) -> Result<(
     Option<crafting::ProfitableItem>,
     HashMap<(u32, crafting::Source), crafting::PurchasedIngredient>,
@@ -145,7 +146,9 @@ pub async fn calc_item_profit(
                 None
             })
             .collect();
-        let prices: Vec<api::Price> = request::request_item_ids("commerce/prices", &recipe_items, None).await?;
+        let prices: Vec<api::Price> = request::request_item_ids("commerce/prices", &recipe_items, None, notify)
+            .await
+            .unwrap_or(Default::default()); // ignore "all ids provided are invalid" (and all other errors)
         recipe_prices = vec_to_map(prices, |x| x.id);
     }
 
@@ -155,7 +158,7 @@ pub async fn calc_item_profit(
     request_listing_item_ids.dedup();
 
     let tp_listings =
-        request::fetch_item_listings(&request_listing_item_ids, Some(&CONFIG.cache_dir))
+        request::fetch_item_listings(&request_listing_item_ids, Some(&CONFIG.cache_dir), notify)
             .await?;
     let tp_listings_map = vec_to_map(tp_listings, |x| x.id);
 
