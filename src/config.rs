@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 use std::collections::HashSet;
+use std::iter::FromIterator;
 use num_rational::Rational32;
 
 use once_cell::sync::Lazy;
@@ -98,17 +99,9 @@ impl Config {
         };
 
         config.ascended = if let Some(provided) = opt.ascended_value {
-            if let Some(value) = provided {
-                Some(value)
-            } else {
-                Some(0)
-            }
+            provided.or(Some(0))
         } else if let Some(currencies) = &file.currencies {
-            if let Some(value) = currencies.ascended {
-                Some(value)
-            } else {
-                None
-            }
+            currencies.ascended
         } else {
             None
         };
@@ -116,11 +109,7 @@ impl Config {
         config.karma = if let Some(value) = opt.karma {
             Rational32::approximate_float(value)
         } else if let Some(currencies) = &file.currencies {
-            if let Some(value) = currencies.karma {
-                Rational32::approximate_float(value)
-            } else {
-                None
-            }
+            currencies.karma.and_then(Rational32::approximate_float)
         } else {
             None
         };
@@ -128,11 +117,7 @@ impl Config {
         config.um = if let Some(value) = opt.um {
             Rational32::approximate_float(value)
         } else if let Some(currencies) = &file.currencies {
-            if let Some(value) = currencies.um {
-                Rational32::approximate_float(value)
-            } else {
-                None
-            }
+            currencies.um.and_then(Rational32::approximate_float)
         } else {
             None
         };
@@ -140,11 +125,7 @@ impl Config {
         config.vm = if let Some(value) = opt.vm {
             Rational32::approximate_float(value)
         } else if let Some(currencies) = &file.currencies {
-            if let Some(value) = currencies.vm {
-                Rational32::approximate_float(value)
-            } else {
-                None
-            }
+            currencies.vm.and_then(Rational32::approximate_float)
         } else {
             None
         };
@@ -152,40 +133,14 @@ impl Config {
         config.rn = if let Some(value) = opt.rn {
             Rational32::approximate_float(value)
         } else if let Some(currencies) = &file.currencies {
-            if let Some(value) = currencies.rn {
-                Rational32::approximate_float(value)
-            } else {
-                None
-            }
+            currencies.rn.and_then(Rational32::approximate_float)
         } else {
             None
         };
 
-        config.item_blacklist = if let Some(blacklist_section) = &file.blacklist {
-            if let Some(items) = &blacklist_section.items {
-                let mut set = HashSet::new();
-                for item in items {
-                    set.insert(*item);
-                }
-                Some(set)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-        config.recipe_blacklist = if let Some(blacklist_section) = &file.blacklist {
-            if let Some(recipes) = &blacklist_section.recipes {
-                let mut set = HashSet::new();
-                for recipe in recipes {
-                    set.insert(*recipe);
-                }
-                Some(set)
-            } else {
-                None
-            }
-        } else {
-            None
+        if let Some(blacklists) = file.blacklist {
+            config.item_blacklist = blacklists.items.map(HashSet::from_iter);
+            config.recipe_blacklist = blacklists.recipes.map(HashSet::from_iter);
         };
 
         let cache_dir = cache_dir(&opt.cache_dir).expect("Failed to identify cache dir");
