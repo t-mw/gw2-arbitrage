@@ -169,10 +169,7 @@ pub async fn calc_item_profit(
         &items_map,
         &tp_listings_map,
         Some(&mut purchased_ingredients),
-        &config::CraftingOptions {
-            include_timegated: true,
-            ..CONFIG.crafting
-        },
+        &CONFIG.crafting,
     );
 
     let required_unknown_recipes: Vec<u32> = if let Some(profitable_item) = &profitable_item {
