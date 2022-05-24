@@ -287,12 +287,12 @@ impl Item {
             // Currency items, for recording vendor purchases
             // TODO: like tokens, these aren't vendor items
             // Order is Basic / Fine / Mwk
-            38030 if CONFIG.karma != None => Some(Money::from_karma(150)), // Drip of liquid karma
+            38030 if CONFIG.karma != None => Some(Money::from_karma(1)), // Drip of liquid karma;
+                  // technically gives 150, but need 1
             79222 | 79061 | 79163 if CONFIG.um != None => Some(Money::from_um(5)), // UM;
                   // unspecified amount, but all purchases are divisible by 5, and consistent w/VM.
-            86384 if CONFIG.vm != None => Some(Money::from_vm(5)), // VM; this item
-                  // technically gives 5 VM. Not every VM purchase is divisible by 5. Will have to
-                  // use a ratio for it
+            86384 if CONFIG.vm != None => Some(Money::from_vm(1)), // VM; this item
+                  // technically gives 5 VM. But not every VM purchase is divisible by 5.
             // 88926 - Provisioner Token
             96052 if CONFIG.rn != None => Some(Money::from_rn(1)), // Research Note
 
