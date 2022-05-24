@@ -474,6 +474,29 @@ impl Recipe {
                 ],
                 source: RecipeSource::Purchasable,
             },
+
+            // TODO: general vendor interface, for money+item purchases, so I can avoid faking it
+            // w/currency items
+            // Bottle of Coconut Milk
+            Recipe {
+                id: None,
+                output_item_id: 87289u32,
+                output_item_count: 1,
+                disciplines: vec![
+                    config::Discipline::Merchant,
+                ],
+                ingredients: vec![
+                    api::RecipeIngredient {
+                        item_id: 38030u32, // karma
+                        count: 249,
+                    },
+                    api::RecipeIngredient {
+                        item_id: 86977u32, // Difluorite crystal
+                        count: 1,
+                    },
+                ],
+                source: RecipeSource::Automatic,
+            },
         ]
     }
 }
