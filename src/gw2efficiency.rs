@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use crate::api;
 use crate::config;
-use crate::crafting;
+use crate::recipe;
 
 use std::str::FromStr;
 
@@ -58,24 +58,26 @@ pub struct Recipe {
     pub name: String, // used only in error output
     pub output_item_id: u32,
     #[serde(deserialize_with = "treat_error_as_none")]
-    pub output_item_count: Option<i32>,
+    pub output_item_count: Option<u32>,
     #[serde(deserialize_with = "strum_discipline")]
     pub disciplines: Vec<config::Discipline>,
     pub ingredients: Vec<api::RecipeIngredient>,
 }
 
-pub async fn fetch_custom_recipes() -> Result<Vec<crafting::Recipe>, Box<dyn std::error::Error>> {
+pub async fn fetch_custom_recipes(notify: Option<&dyn Fn(&str)>) -> Result<Vec<recipe::Recipe>, Box<dyn std::error::Error>> {
     let url = "https://raw.githubusercontent.com/gw2efficiency/custom-recipes/master/recipes.json";
-    println!("Fetching {}", url);
+    if let Some(notify) = notify {
+        notify(&url);
+    }
 
     let custom_recipes: Vec<Recipe> = reqwest::get(url).await?.json().await?;
 
-    let recipes: Vec<crafting::Recipe> = custom_recipes
+    let recipes: Vec<recipe::Recipe> = custom_recipes
         .into_iter()
         // Remove blacklisted recipes here to avoid printing errors for non-integers
         .filter(|r| !BLACKLIST_ITEM_IDS.contains(&r.output_item_id))
         .map(std::convert::TryFrom::try_from)
-        .filter_map(|result: Result<crafting::Recipe, _>| match result {
+        .filter_map(|result: Result<recipe::Recipe, _>| match result {
             Ok(recipe) => Some(recipe),
             Err(e) => {
                 eprintln!("{}", e);

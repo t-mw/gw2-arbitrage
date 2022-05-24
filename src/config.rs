@@ -4,6 +4,9 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
+use std::collections::HashSet;
+use std::iter::FromIterator;
+use num_rational::Rational32;
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -18,10 +21,9 @@ pub const CACHE_PREFIX: &str = "cache_";
 #[derive(Debug, Default)]
 pub struct CraftingOptions {
     pub include_timegated: bool,
-    pub include_ascended: bool,
-    pub count: Option<i32>,
+    pub count: Option<u32>,
     pub threshold: Option<u32>,
-    pub value: Option<i32>,
+    pub value: Option<u32>,
 }
 
 #[derive(Default)]
@@ -33,10 +35,20 @@ pub struct Config {
     pub lang: Option<Language>,
     pub api_key: Option<String>,
 
+    // Currency conversion values
+    pub ascended: Option<u32>,
+    pub karma: Option<Rational32>,
+    pub um: Option<Rational32>,
+    pub vm: Option<Rational32>,
+    pub rn: Option<Rational32>,
+
     pub cache_dir: PathBuf,
     pub api_recipes_file: PathBuf,
     pub custom_recipes_file: PathBuf,
     pub items_file: PathBuf,
+
+    pub item_blacklist: Option<HashSet<u32>>,
+    pub recipe_blacklist: Option<HashSet<u32>>,
 
     pub item_id: Option<u32>,
 }
@@ -52,13 +64,12 @@ impl Config {
         let opt = Opt::from_args();
 
         config.crafting.include_timegated = opt.include_timegated;
-        config.crafting.include_ascended = opt.include_ascended;
         config.crafting.count = opt.count;
         config.crafting.threshold = opt.threshold;
         config.crafting.value = opt.value;
 
         config.output_csv = opt.output_csv;
-        config.lang = opt.lang;
+
         config.item_id = opt.item_id;
 
         config.filter_disciplines = opt.filter_disciplines;
@@ -73,17 +84,64 @@ impl Config {
 
         config.api_key = file.api_key;
 
-        if let None = config.lang {
-            if let Some(code) = file.lang {
-                config.lang = code.parse().map_or_else(
-                    |e| {
-                        println!("Config file: {}", e);
-                        None
-                    },
-                    |c| Some(c),
-                )
-            }
-        }
+        config.lang = if let Some(_) = opt.lang {
+            opt.lang
+        } else if let Some(code) = file.lang {
+            code.parse().map_or_else(
+                |e| {
+                    println!("Config file: {}", e);
+                    None
+                },
+                |c| Some(c),
+            )
+        } else {
+            None
+        };
+
+        config.ascended = if let Some(provided) = opt.ascended_value {
+            provided.or(Some(0))
+        } else if let Some(currencies) = &file.currencies {
+            currencies.ascended
+        } else {
+            None
+        };
+
+        config.karma = if let Some(value) = opt.karma {
+            Rational32::approximate_float(value)
+        } else if let Some(currencies) = &file.currencies {
+            currencies.karma.and_then(Rational32::approximate_float)
+        } else {
+            None
+        };
+
+        config.um = if let Some(value) = opt.um {
+            Rational32::approximate_float(value)
+        } else if let Some(currencies) = &file.currencies {
+            currencies.um.and_then(Rational32::approximate_float)
+        } else {
+            None
+        };
+
+        config.vm = if let Some(value) = opt.vm {
+            Rational32::approximate_float(value)
+        } else if let Some(currencies) = &file.currencies {
+            currencies.vm.and_then(Rational32::approximate_float)
+        } else {
+            None
+        };
+
+        config.rn = if let Some(value) = opt.rn {
+            Rational32::approximate_float(value)
+        } else if let Some(currencies) = &file.currencies {
+            currencies.rn.and_then(Rational32::approximate_float)
+        } else {
+            None
+        };
+
+        if let Some(blacklists) = file.blacklist {
+            config.item_blacklist = blacklists.items.map(HashSet::from_iter);
+            config.recipe_blacklist = blacklists.recipes.map(HashSet::from_iter);
+        };
 
         let cache_dir = cache_dir(&opt.cache_dir).expect("Failed to identify cache dir");
         ensure_dir(&cache_dir).expect("Failed to create cache dir");
@@ -153,6 +211,21 @@ struct ConfigFile {
     // API key requires scope unlocks
     api_key: Option<String>,
     lang: Option<String>,
+    currencies: Option<ConfigFileCurrencySection>,
+    blacklist: Option<ConfigFileBlacklistSection>,
+}
+#[derive(Debug, Default, Deserialize)]
+struct ConfigFileCurrencySection {
+    ascended: Option<u32>,
+    karma: Option<f64>,
+    um: Option<f64>,
+    vm: Option<f64>,
+    rn: Option<f64>,
+}
+#[derive(Debug, Default, Deserialize)]
+struct ConfigFileBlacklistSection {
+    items: Option<Vec<u32>>,
+    recipes: Option<Vec<u32>>,
 }
 
 #[derive(StructOpt, Debug)]
@@ -160,10 +233,6 @@ struct Opt {
     /// Include timegated recipes such as Deldrimor Steel Ingot
     #[structopt(short = "t", long)]
     include_timegated: bool,
-
-    /// Include recipes that require Piles of Bloodstone Dust, Dragonite Ore or Empyreal Fragments
-    #[structopt(short = "a", long)]
-    include_ascended: bool,
 
     /// Output the full list of profitable recipes to this CSV file
     #[structopt(short, long, parse(from_os_str))]
@@ -174,11 +243,11 @@ struct Opt {
 
     /// Limit the maximum number of items produced for a recipe
     #[structopt(short, long)]
-    count: Option<i32>,
+    count: Option<u32>,
 
     /// Calculate profit based on a fixed value instead of from buy orders
     #[structopt(long)]
-    value: Option<i32>,
+    value: Option<u32>,
 
     /// Threshold - min profit per item in copper
     #[structopt(long)]
@@ -204,6 +273,28 @@ struct Opt {
     // /// One of "en", "es", "de", "fr", or "zh". Defaults to "en"
     #[structopt(long, parse(try_from_str = get_lang))]
     lang: Option<Language>,
+
+    /// Include recipes that require Piles of Bloodstone Dust, Dragonite Ore or Empyreal Fragments,
+    /// with an optional opportunity cost per item
+    #[structopt(short = "a", long)]
+    ascended_value: Option<Option<u32>>,
+
+    /// Include recipes that require ingredients that can only be purchased with karma, using this
+    /// conversion factor as the opportunity cost
+    #[structopt(long)]
+    karma: Option<f64>,
+
+    /// Include recipes that use LW3 map tokens, using this conversion factor as the opportunity cost
+    #[structopt(long)]
+    um: Option<f64>,
+
+    /// Include recipes that use LW4 map tokens, using this conversion factor as the opportunity cost
+    #[structopt(long)]
+    vm: Option<f64>,
+
+    /// Include recipes that use research notes, using this conversion factor as the opportunity cost
+    #[structopt(long)]
+    rn: Option<f64>,
 }
 
 static CACHE_DIR_HELP: Lazy<String> = Lazy::new(|| {
@@ -230,6 +321,12 @@ static CONFIG_FILE_HELP: Lazy<String> = Lazy::new(|| {
 
     api_key = "<key-with-unlocks-scope>"
     lang = "<lang>"
+
+    [currencies]
+    ascended = <opportunity cost per item>
+    karma = <opportunity cost per karma>
+    um = <opportunity cost per um>
+    vm = <opportunity cost per vm>
 
 The default file location is '{}'."#,
         config_file(&None).unwrap().display()
@@ -293,6 +390,7 @@ fn get_lang<Language: FromStr + VariantNames>(
     Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Display, EnumString, EnumVariantNames,
 )]
 pub enum Discipline {
+    // TODO: swap these next two, next time rebuilding data files, so alphabetical
     Artificer,
     Armorsmith,
     Chef,
@@ -312,6 +410,22 @@ pub enum Discipline {
     Charge,
     Achievement,
     Growing,
+}
+
+impl Discipline {
+    pub fn get_abbrev(&self) -> String {
+        let s = self.to_string();
+        match &s[..1] {
+            // take 1st and 8th characters to distinguish Merchant/Mystic Forge
+            "M" => format!("{}{}", &s[..1], &s[7..8]),
+            // take 1st and 3rd characters to distinguish Scribe/Salvage and
+            // Armorsmith/Artificer/Achievement
+            "A" | "S" => format!("{}{}", &s[..1], &s[2..3]),
+            // take 1st and 4th characters to distinguish Chef/Charge
+            "C" => format!("{}{}", &s[..1], &s[3..4]),
+            l => l.to_string(),
+        }
+    }
 }
 
 fn get_discipline<Discipline: FromStr + VariantNames>(
