@@ -1,6 +1,8 @@
 use colored::Colorize;
 use serde::Serialize;
 
+use std::io;
+use std::io::prelude::*;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
@@ -120,7 +122,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
     } else {
         println!("Loading trading post prices");
-        let tp_prices: Vec<api::Price> = request::request_paginated("commerce/prices", &None, notify).await?;
+        print!("Pages:");
+        let commerce_notify = |url: &str| {
+            print!(" {}", &url[51..url.len()-14]);
+            io::stdout().flush().unwrap_or_else(|e| println!("Flush failed: {}", &e));
+        };
+        let tp_prices: Vec<api::Price> = request::request_paginated(
+            "commerce/prices", &None, Some(&commerce_notify as &dyn Fn(&str))
+        ).await?;
+        println!("");
         println!("Loaded {} trading post prices", tp_prices.len());
 
         let tp_prices_map = profit::vec_to_map(tp_prices, |x| x.id);
