@@ -164,7 +164,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// Print detailed information about a profitable item
 fn print_profitable_item(
     item: &Item,
-    profitable_item: &Option<crafting::ProfitableItem>,
+    profitable_item: &Option<profit::ProfitableItem>,
     purchased_ingredients: &HashMap<(u32, crafting::Source), crafting::PurchasedIngredient>,
     required_unknown_recipes: &Vec<u32>,
     recipe_prices: &HashMap<u32, api::Price>,
@@ -412,7 +412,7 @@ struct OutputRow {
 
 /// List profitable items to screen or CSV
 fn print_item_list(
-    profitable_items: &Vec<crafting::ProfitableItem>,
+    profitable_items: &Vec<profit::ProfitableItem>,
     recipes_map: &HashMap<u32, Recipe>,
     items_map: &HashMap<u32, Item>,
     known_recipes: &Option<HashSet<u32>>,
