@@ -262,7 +262,7 @@ pub fn calculate_crafting_profit(
 
 
         let (buy_price, min_buy) = if let Some(price) = opt.value {
-            (Money::from_copper(price as i32), price)
+            (Money::from_copper(price as i32) * output_item_count, price)
         } else if let Some((buy_price, min_buy)) = tp_listings_map
             .get_mut(&item_id)
             .unwrap_or_else(|| panic!("Missing listings for item id: {}", item_id))
