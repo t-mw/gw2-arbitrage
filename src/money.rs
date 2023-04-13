@@ -1,8 +1,9 @@
-use num_rational::Rational32;
+use num_rational::{Rational32, Rational64};
 use num_traits::{Zero, ToPrimitive};
 
 use std::fmt;
 use std::cmp;
+use std::convert::TryFrom;
 
 use crate::config::CONFIG;
 
@@ -265,12 +266,27 @@ impl Ord for Money {
 impl std::iter::Sum for Money {
     fn sum<I: Iterator<Item = Money>>(iter: I) -> Self {
         let mut sink = Money::zero();
+        let mut copper = Rational64::zero();
         for src in iter {
-            sink.copper += src.copper;
+            copper += Rational64::new(i64::from(*src.copper.numer()), i64::from(*src.copper.denom()));
             sink.karma += src.karma;
             sink.um += src.um;
             sink.vm += src.vm;
             sink.rn += src.rn;
+        }
+        let mut error = false;
+        sink.copper = Rational32::new(
+            i32::try_from(*copper.numer()).unwrap_or_else(|_| {
+                error = true;
+                i32::MAX
+            }),
+            i32::try_from(*copper.denom()).unwrap_or_else(|_| {
+                error = true;
+                i32::MAX
+            })
+        );
+        if error {
+            eprintln!("Overflow error: Money sum will be approximate");
         }
         sink
     }
