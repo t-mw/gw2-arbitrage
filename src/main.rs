@@ -20,11 +20,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let notify = Some(&notify_print as &dyn Fn(&str));
 
     let known_recipes = if let Some(key) = &CONFIG.api_key {
-        Some(
-            request::fetch_account_recipes(&key, &CONFIG.cache_dir, notify)
-                .await
-                .map_err(|e| format!("API error fetching recipe unlocks: {}", e))?,
-        )
+        match request::fetch_account_recipes(&key, &CONFIG.cache_dir, notify).await {
+            Ok(recipes) => Some(recipes),
+            Err(error) => {
+                eprintln!("API error fetching recipe unlocks: {}", error);
+                None
+            }
+        }
     } else {
         None
     };
