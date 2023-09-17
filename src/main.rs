@@ -113,12 +113,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if let Some(item_id) = CONFIG.item_id {
-        let item = items_map.get(&item_id).expect("Item not found");
         let (profitable_item, purchased_ingredients, required_unknown_recipes, recipe_prices) = profit::calc_item_profit(
             item_id, &recipes_map, &items_map, &known_recipes, notify,
         ).await?;
         print_profitable_item(
-            &item,
+            item_id,
             &profitable_item, &purchased_ingredients, &required_unknown_recipes, &recipe_prices,
             &recipes_map, &items_map, &known_recipes,
         )?;
@@ -165,7 +164,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Print detailed information about a profitable item
 fn print_profitable_item(
-    item: &Item,
+    item_id: u32,
     profitable_item: &Option<profit::ProfitableItem>,
     purchased_ingredients: &HashMap<(u32, crafting::Source), crafting::PurchasedIngredient>,
     required_unknown_recipes: &Vec<u32>,
@@ -185,7 +184,9 @@ fn print_profitable_item(
     println!(
         "Shopping list for {} x {} = {} profit ({} / step, {}%)",
         profitable_item.count,
-        &item,
+        items_map
+            .get(&item_id)
+            .map_or_else(|| "???".to_string(), |item| item.to_string()),
         Money::from_copper(profitable_item.profit.to_copper_value()),
         profitable_item.profit_per_crafting_step().to_copper_value(),
         (profitable_item.profit_on_cost() * 100_f64)
@@ -313,9 +314,9 @@ fn print_profitable_item(
     println!("Max inventory slots: {}", inventory + 1); // + 1 for the crafting output
     println!(
         "Crafting steps: https://gw2efficiency.com/crafting/calculator/a~1!b~1!c~1!d~{}-{}",
-        profitable_item.count, item.id
+        profitable_item.count, item_id
     );
-    for (item_id, count, recipe) in profitable_item.crafted_items.sorted(item.id, &recipes_map) {
+    for (item_id, count, recipe) in profitable_item.crafted_items.sorted(item_id, &recipes_map) {
         let num_crafted = count / recipe.output_item_count;
         let item_name = items_map
             .get(&item_id)
