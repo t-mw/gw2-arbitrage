@@ -65,8 +65,8 @@ pub enum Type {
     Gizmo,
     Key,
     MiniPet,
-    Quux, // Jade bot item; may be a temporary name
-    Qux, // Jade bot core; may be a temporary name
+    JadeTechModule,
+    PowerCore,
     Tool,
     Trait,
     Trinket,
