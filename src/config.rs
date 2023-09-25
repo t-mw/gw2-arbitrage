@@ -325,8 +325,9 @@ static CONFIG_FILE_HELP: Lazy<String> = Lazy::new(|| {
     [currencies]
     ascended = <opportunity cost per item>
     karma = <opportunity cost per karma>
-    um = <opportunity cost per um>
-    vm = <opportunity cost per vm>
+    um = <opportunity cost per Unbound Magic>
+    vm = <opportunity cost per Volatile Magic>
+    rn = <opportunity cost per Research Note>
 
 The default file location is '{}'."#,
         config_file(&None).unwrap().display()
