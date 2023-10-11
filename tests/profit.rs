@@ -5,6 +5,7 @@ use gw2_arbitrage::{
     crafting::{self, PurchasedIngredient, CraftedItems},
     recipe::Recipe,
     money::Money,
+    profit::{ProfitableItem, calculate_crafting_profit},
 };
 
 use std::collections::{HashMap, HashSet};
@@ -104,7 +105,7 @@ fn calculate_crafting_profit_agony_infusion_unprofitable_test() {
         tp_listings_map,
     } = data::agony_infusions();
 
-    let profitable_item = crafting::calculate_crafting_profit(
+    let profitable_item = calculate_crafting_profit(
         item_id,
         &recipes_map,
         &items_map,
@@ -178,7 +179,7 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
     ];
 
     let mut purchased_ingredients = HashMap::new();
-    let profitable_item = crafting::calculate_crafting_profit(
+    let profitable_item = calculate_crafting_profit(
         plus_16_item_id,
         &recipes_map,
         &items_map,
@@ -239,7 +240,7 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
     leftovers.insert(thermocatalytic_reagent_item_id, (6, Money::from_copper(1496)/10, crafting::Source::Vendor));
     assert_eq!(
         profitable_item,
-        Some(crafting::ProfitableItem {
+        Some(ProfitableItem {
             id: plus_16_item_id,
             crafting_cost,
             count: 2,
@@ -296,7 +297,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
     ]);
 
     recipes_map.get_mut(&item_id).unwrap().output_item_count = 99;
-    let profitable_item = crafting::calculate_crafting_profit(
+    let profitable_item = calculate_crafting_profit(
         item_id,
         &recipes_map,
         &items_map,
@@ -307,7 +308,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
     assert!(profitable_item.is_none());
 
     recipes_map.get_mut(&item_id).unwrap().output_item_count = 98;
-    let profitable_item = crafting::calculate_crafting_profit(
+    let profitable_item = calculate_crafting_profit(
         item_id,
         &recipes_map,
         &items_map,
@@ -320,7 +321,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
     crafted.insert(item_id, 98);
     assert_eq!(
         profitable_item,
-        Some(crafting::ProfitableItem {
+        Some(ProfitableItem {
             id: item_id,
             crafting_cost,
             count: 98,
@@ -346,7 +347,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
     );
 
     recipes_map.get_mut(&item_id).unwrap().output_item_count = 3;
-    let profitable_item = crafting::calculate_crafting_profit(
+    let profitable_item = calculate_crafting_profit(
         item_id,
         &recipes_map,
         &items_map,
@@ -359,7 +360,7 @@ fn calculate_crafting_profit_with_output_item_count_test() {
     crafted.insert(item_id, 96);
     assert_eq!(
         profitable_item,
-        Some(crafting::ProfitableItem {
+        Some(ProfitableItem {
             id: item_id,
             crafting_cost,
             count: 96,
@@ -514,7 +515,7 @@ fn calculate_crafting_profit_unknown_recipe_test() {
     }
 
     let mut purchased_ingredients = HashMap::new();
-    let profitable_item = crafting::calculate_crafting_profit(
+    let profitable_item = calculate_crafting_profit(
         main_item.id,
         &recipes_map,
         &items_map,
@@ -589,7 +590,7 @@ fn calculate_crafting_profit_with_subitem_leftovers() {
     ]);
 
     let mut purchased_ingredients = HashMap::new();
-    let profitable_item = crafting::calculate_crafting_profit(
+    let profitable_item = calculate_crafting_profit(
         1000,
         &recipes_map,
         &items_map,
@@ -613,7 +614,7 @@ fn calculate_crafting_profit_with_subitem_leftovers() {
     crafted.insert(2100, 40);
     assert_eq!(
         profitable_item,
-        Some(crafting::ProfitableItem {
+        Some(ProfitableItem {
             id: 1000,
             crafting_cost,
             count: 51,
