@@ -1,16 +1,16 @@
 use colored::Colorize;
 use serde::Serialize;
 
-use std::io;
-use std::io::prelude::*;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::io;
+use std::io::prelude::*;
 
-use gw2_arbitrage::*;
 use config::CONFIG;
+use gw2_arbitrage::*;
+use item::Item;
 use money::Money;
 use recipe::Recipe;
-use item::Item;
 
 const ITEM_STACK_SIZE: u32 = 250; // GW2 uses a "stack size" of 250
 
@@ -49,10 +49,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("Loading custom recipes");
-    let custom_recipes: Vec<Recipe> = request::get_data(
-        &CONFIG.custom_recipes_file,
-        || gw2efficiency::fetch_custom_recipes(notify),
-    )
+    let custom_recipes: Vec<Recipe> = request::get_data(&CONFIG.custom_recipes_file, || {
+        gw2efficiency::fetch_custom_recipes(notify)
+    })
     .await
     .unwrap_or_else(|e| {
         eprintln!("Failed to fetch custom recipes: {}", e);
@@ -113,30 +112,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if let Some(item_id) = CONFIG.item_id {
-        let (profitable_item, purchased_ingredients, required_unknown_recipes, recipe_prices) = profit::calc_item_profit(
-            item_id, &recipes_map, &items_map, &known_recipes, notify,
-        ).await?;
+        let (profitable_item, purchased_ingredients, required_unknown_recipes, recipe_prices) =
+            profit::calc_item_profit(item_id, &recipes_map, &items_map, &known_recipes, notify)
+                .await?;
         print_profitable_item(
             item_id,
-            &profitable_item, &purchased_ingredients, &required_unknown_recipes, &recipe_prices,
-            &recipes_map, &items_map, &known_recipes,
+            &profitable_item,
+            &purchased_ingredients,
+            &required_unknown_recipes,
+            &recipe_prices,
+            &recipes_map,
+            &items_map,
+            &known_recipes,
         )?;
     } else {
         println!("Loading trading post prices");
         print!("Pages:");
         let commerce_notify = |url: &str| {
-            print!(" {}", &url[51..url.len()-14]);
-            io::stdout().flush().unwrap_or_else(|e| println!("Flush failed: {}", &e));
+            print!(" {}", &url[51..url.len() - 14]);
+            io::stdout()
+                .flush()
+                .unwrap_or_else(|e| println!("Flush failed: {}", &e));
         };
         let tp_prices: Vec<api::Price> = request::request_paginated(
-            "commerce/prices", &None, Some(&commerce_notify as &dyn Fn(&str))
-        ).await?;
+            "commerce/prices",
+            &None,
+            Some(&commerce_notify as &dyn Fn(&str)),
+        )
+        .await?;
         println!("");
         println!("Loaded {} trading post prices", tp_prices.len());
 
         let tp_prices_map = profit::vec_to_map(tp_prices, |x| x.id);
 
-        let (profitable_item_ids, ingredient_ids) = profit::find_profitable_items(&tp_prices_map, &recipes_map, &items_map);
+        let (profitable_item_ids, ingredient_ids) =
+            profit::find_profitable_items(&tp_prices_map, &recipes_map, &items_map);
 
         println!("Loading detailed trading post listings");
         let mut request_listing_item_ids = vec![];
@@ -145,7 +155,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         request_listing_item_ids.sort_unstable();
         request_listing_item_ids.dedup();
         // Caching these is pointless, as the vector changes on each run, leading to new URLs
-        let tp_listings = request::fetch_item_listings(&request_listing_item_ids, None, notify).await?;
+        let tp_listings =
+            request::fetch_item_listings(&request_listing_item_ids, None, notify).await?;
         println!(
             "Loaded {} detailed trading post listings",
             tp_listings.len()
@@ -153,7 +164,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let tp_listings_map = profit::vec_to_map(tp_listings, |x| x.id);
 
         let profitable_items = profit::profitable_item_list(
-            &tp_listings_map, &profitable_item_ids, &request_listing_item_ids, &recipes_map, &items_map
+            &tp_listings_map,
+            &profitable_item_ids,
+            &request_listing_item_ids,
+            &recipes_map,
+            &items_map,
         );
 
         print_item_list(&profitable_items, &recipes_map, &items_map, &known_recipes)?;
@@ -189,16 +204,14 @@ fn print_profitable_item(
             .map_or_else(|| "???".to_string(), |item| item.to_string()),
         Money::from_copper(profitable_item.profit.to_copper_value()),
         profitable_item.profit_per_crafting_step().to_copper_value(),
-        (profitable_item.profit_on_cost() * 100_f64)
-            .round(),
+        (profitable_item.profit_on_cost() * 100_f64).round(),
     );
     let price_msg = if profitable_item.max_sell == profitable_item.min_sell {
         format!("{}", profitable_item.min_sell)
     } else {
         format!(
             "{} to {}",
-            profitable_item.max_sell,
-            profitable_item.min_sell,
+            profitable_item.max_sell, profitable_item.min_sell,
         )
     };
     println!(
@@ -209,10 +222,8 @@ fn print_profitable_item(
     );
 
     println!("============");
-    let mut sorted_ingredients: Vec<(
-        &(u32, crafting::Source),
-        &crafting::PurchasedIngredient,
-    )> = purchased_ingredients.iter().collect();
+    let mut sorted_ingredients: Vec<(&(u32, crafting::Source), &crafting::PurchasedIngredient)> =
+        purchased_ingredients.iter().collect();
     sorted_ingredients.sort_unstable_by(|a, b| {
         if b.0 .1 == a.0 .1 {
             match b.1.count.cmp(&a.1.count) {
@@ -262,15 +273,12 @@ fn print_profitable_item(
                 if ingredient.max_price == ingredient.min_price {
                     format!(
                         " (at {}) Subtotal: {}",
-                        ingredient.min_price,
-                        ingredient.total_cost,
+                        ingredient.min_price, ingredient.total_cost,
                     )
                 } else {
                     format!(
                         " (at {} to {}) Subtotal: {}",
-                        ingredient.min_price,
-                        ingredient.max_price,
-                        ingredient.total_cost,
+                        ingredient.min_price, ingredient.max_price, ingredient.total_cost,
                     )
                 }
             }
@@ -288,11 +296,7 @@ fn print_profitable_item(
                             cost * ingredient.count,
                         )
                     } else {
-                        format!(
-                            " (vendor: {}) Subtotal: {}",
-                            cost,
-                            cost * ingredient.count,
-                        )
+                        format!(" (vendor: {}) Subtotal: {}", cost, cost * ingredient.count,)
                     }
                 } else {
                     "".to_string()
@@ -321,14 +325,22 @@ fn print_profitable_item(
         let item_name = items_map
             .get(&item_id)
             .map_or_else(|| "???".to_string(), |item| item.to_string());
-        let ingredients = recipe.sorted_ingredients().iter().map(|ingredient| {
-            let ingredient_name = items_map
-                .get(&ingredient.item_id)
-                .map_or_else(|| "???".to_string(), |item| item.to_string());
-            format!("{} {}", ingredient.count * num_crafted, ingredient_name)
-        }).collect::<Vec<String>>().join(" ");
+        let ingredients = recipe
+            .sorted_ingredients()
+            .iter()
+            .map(|ingredient| {
+                let ingredient_name = items_map
+                    .get(&ingredient.item_id)
+                    .map_or_else(|| "???".to_string(), |item| item.to_string());
+                format!("{} {}", ingredient.count * num_crafted, ingredient_name)
+            })
+            .collect::<Vec<String>>()
+            .join(" ");
         if recipe.output_item_count > 1 {
-            println!("{} (makes {}) {} from {}", num_crafted, count, item_name, ingredients);
+            println!(
+                "{} (makes {}) {} from {}",
+                num_crafted, count, item_name, ingredients
+            );
         } else {
             println!("{} {} from {}", count, item_name, ingredients);
         }
@@ -354,7 +366,8 @@ fn print_profitable_item(
                         if let Some(listing) = recipe_prices.get(&item.id) {
                             debug_assert!(listing.sells.unit_price < i32::MAX as u32);
                             return format!(
-                                "{}, buy for {}", &item.name,
+                                "{}, buy for {}",
+                                &item.name,
                                 Money::from_copper(listing.sells.unit_price as i32)
                             );
                         }
@@ -377,7 +390,11 @@ fn print_profitable_item(
                 Some(_) => "can not",
                 None => "may not be able to",
             },
-            if required_unknown_recipes.len() > 1 { "s" } else { "" },
+            if required_unknown_recipes.len() > 1 {
+                "s"
+            } else {
+                ""
+            },
             req_recipes,
         );
     }

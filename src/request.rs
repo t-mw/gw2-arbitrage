@@ -198,7 +198,7 @@ pub async fn fetch_account_recipes(
     let url = format!("{}{}", base, key);
     if let Some(notify) = notify {
         let display = format!("{}{}", base, "<api-key>");
-        let private = |_url: &str| { notify(&display) };
+        let private = |_url: &str| notify(&display);
         Ok(cached_fetch(&url, cache_dir, Some(&private as &dyn Fn(&str))).await?)
     } else {
         Ok(cached_fetch(&url, cache_dir, None).await?)

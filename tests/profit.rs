@@ -1,11 +1,11 @@
 use gw2_arbitrage::{
     api::{self, ItemListings, Listing, RecipeIngredient},
-    item::Item,
     config::Discipline,
-    crafting::{self, PurchasedIngredient, CraftedItems},
-    recipe::Recipe,
+    crafting::{self, CraftedItems, PurchasedIngredient},
+    item::Item,
     money::Money,
-    profit::{ProfitableItem, calculate_crafting_profit},
+    profit::{calculate_crafting_profit, ProfitableItem},
+    recipe::Recipe,
 };
 
 use std::collections::{HashMap, HashSet};
@@ -237,7 +237,10 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
     crafted.insert(plus_14_item_id + 1, 4);
     crafted.insert(plus_16_item_id, 2);
     let mut leftovers: HashMap<u32, (u32, Money, crafting::Source)> = HashMap::new();
-    leftovers.insert(thermocatalytic_reagent_item_id, (6, Money::from_copper(1496)/10, crafting::Source::Vendor));
+    leftovers.insert(
+        thermocatalytic_reagent_item_id,
+        (6, Money::from_copper(1496) / 10, crafting::Source::Vendor),
+    );
     assert_eq!(
         profitable_item,
         Some(ProfitableItem {
@@ -251,10 +254,7 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
             // (1100000 * 4 + 3 * 150) / (85 / 100)
             breakeven: Money::from_copper(5177000),
             crafting_steps: 6,
-            crafted_items: CraftedItems {
-                crafted,
-                leftovers,
-            },
+            crafted_items: CraftedItems { crafted, leftovers },
         })
     );
 }
@@ -533,7 +533,10 @@ fn calculate_crafting_profit_unknown_recipe_test() {
         expected_purchased_ingredients
     );
     assert_eq!(
-        profitable_item.unwrap().crafted_items.unknown_recipes(&recipes_map, &Some(known_recipes)),
+        profitable_item
+            .unwrap()
+            .crafted_items
+            .unknown_recipes(&recipes_map, &Some(known_recipes)),
         expected_unknown_recipes
     );
 }
@@ -608,7 +611,10 @@ fn calculate_crafting_profit_with_subitem_leftovers() {
     );
     // One leftover, not profitable at 100
     let mut leftovers: HashMap<u32, (u32, Money, crafting::Source)> = HashMap::new();
-    leftovers.insert(2100, (1, Money::from_copper(30), crafting::Source::Crafting));
+    leftovers.insert(
+        2100,
+        (1, Money::from_copper(30), crafting::Source::Crafting),
+    );
     let mut crafted = HashMap::new();
     crafted.insert(1000, 51);
     crafted.insert(2100, 40);
@@ -624,10 +630,7 @@ fn calculate_crafting_profit_with_subitem_leftovers() {
             // (50 * 2 + 30) / (85/100)
             breakeven: Money::from_copper(153),
             crafting_steps: 59,
-            crafted_items: CraftedItems {
-                crafted,
-                leftovers,
-            },
+            crafted_items: CraftedItems { crafted, leftovers },
         })
     );
 }

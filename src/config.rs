@@ -1,12 +1,12 @@
+use num_rational::Rational32;
+use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
+use std::iter::FromIterator;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
-use std::collections::HashSet;
-use std::iter::FromIterator;
-use num_rational::Rational32;
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};

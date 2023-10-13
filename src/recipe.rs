@@ -2,9 +2,9 @@ use crate::api;
 use crate::config;
 use crate::gw2efficiency;
 
-use std::convert::TryFrom;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 
 use serde::{Deserialize, Serialize};
 
@@ -118,20 +118,14 @@ impl Recipe {
 
     pub fn sorted_ingredients(&self) -> Vec<&api::RecipeIngredient> {
         let mut ingredients: Vec<&api::RecipeIngredient> = self.ingredients.iter().collect();
-        ingredients.sort_unstable_by(|a, b| {
-            match b.count.cmp(&a.count) {
-                Ordering::Equal => b.item_id.cmp(&a.item_id),
-                v => v,
-            }
+        ingredients.sort_unstable_by(|a, b| match b.count.cmp(&a.count) {
+            Ordering::Equal => b.item_id.cmp(&a.item_id),
+            v => v,
         });
         ingredients
     }
 
-    pub fn collect_ingredient_ids(
-        &self,
-        recipes_map: &HashMap<u32, Recipe>,
-        ids: &mut Vec<u32>,
-    ) {
+    pub fn collect_ingredient_ids(&self, recipes_map: &HashMap<u32, Recipe>, ids: &mut Vec<u32>) {
         for ingredient in &self.ingredients {
             if ids.contains(&ingredient.item_id) {
                 continue;
@@ -154,8 +148,8 @@ impl Recipe {
                 // If we have no known recipes, assume we know none
                 if known_recipes
                     .as_ref()
-                        .filter(|recipes| recipes.contains(&id))
-                        .is_none()
+                    .filter(|recipes| recipes.contains(&id))
+                    .is_none()
                 {
                     unknown_recipes.insert(id);
                 }
@@ -164,9 +158,7 @@ impl Recipe {
 
         for ingredient in &self.ingredients {
             if let Some(recipe) = recipes_map.get(&ingredient.item_id) {
-                recipe.collect_unknown_recipe_ids(
-                    &recipes_map, &known_recipes, unknown_recipes
-                );
+                recipe.collect_unknown_recipe_ids(&recipes_map, &known_recipes, unknown_recipes);
             }
         }
     }
@@ -212,9 +204,7 @@ impl Recipe {
                 id: None,
                 output_item_id: 97339u32,
                 output_item_count: 1,
-                disciplines: vec![
-                    config::Discipline::Jeweler,
-                ],
+                disciplines: vec![config::Discipline::Jeweler],
                 ingredients: vec![
                     api::RecipeIngredient {
                         item_id: 96052u32,
@@ -235,9 +225,7 @@ impl Recipe {
                 id: None,
                 output_item_id: 97041u32,
                 output_item_count: 1,
-                disciplines: vec![
-                    config::Discipline::Jeweler,
-                ],
+                disciplines: vec![config::Discipline::Jeweler],
                 ingredients: vec![
                     api::RecipeIngredient {
                         item_id: 97339u32,
@@ -262,9 +250,7 @@ impl Recipe {
                 id: None,
                 output_item_id: 97284u32,
                 output_item_count: 1,
-                disciplines: vec![
-                    config::Discipline::Jeweler,
-                ],
+                disciplines: vec![config::Discipline::Jeweler],
                 ingredients: vec![
                     api::RecipeIngredient {
                         item_id: 97041u32,
@@ -289,9 +275,7 @@ impl Recipe {
                 id: None,
                 output_item_id: 96628u32,
                 output_item_count: 1,
-                disciplines: vec![
-                    config::Discipline::Jeweler,
-                ],
+                disciplines: vec![config::Discipline::Jeweler],
                 ingredients: vec![
                     api::RecipeIngredient {
                         item_id: 97284u32,
@@ -316,9 +300,7 @@ impl Recipe {
                 id: None,
                 output_item_id: 95864u32,
                 output_item_count: 1,
-                disciplines: vec![
-                    config::Discipline::Jeweler,
-                ],
+                disciplines: vec![config::Discipline::Jeweler],
                 ingredients: vec![
                     api::RecipeIngredient {
                         item_id: 96628u32,
@@ -343,9 +325,7 @@ impl Recipe {
                 id: None,
                 output_item_id: 96467u32,
                 output_item_count: 1,
-                disciplines: vec![
-                    config::Discipline::Jeweler,
-                ],
+                disciplines: vec![config::Discipline::Jeweler],
                 ingredients: vec![
                     api::RecipeIngredient {
                         item_id: 95864u32,
@@ -370,9 +350,7 @@ impl Recipe {
                 id: None,
                 output_item_id: 97020u32,
                 output_item_count: 1,
-                disciplines: vec![
-                    config::Discipline::Jeweler,
-                ],
+                disciplines: vec![config::Discipline::Jeweler],
                 ingredients: vec![
                     api::RecipeIngredient {
                         item_id: 96467u32,
@@ -397,9 +375,7 @@ impl Recipe {
                 id: None,
                 output_item_id: 96299u32,
                 output_item_count: 1,
-                disciplines: vec![
-                    config::Discipline::Jeweler,
-                ],
+                disciplines: vec![config::Discipline::Jeweler],
                 ingredients: vec![
                     api::RecipeIngredient {
                         item_id: 97020u32,
@@ -424,9 +400,7 @@ impl Recipe {
                 id: None,
                 output_item_id: 96070u32,
                 output_item_count: 1,
-                disciplines: vec![
-                    config::Discipline::Jeweler,
-                ],
+                disciplines: vec![config::Discipline::Jeweler],
                 ingredients: vec![
                     api::RecipeIngredient {
                         item_id: 96299u32,
@@ -451,9 +425,7 @@ impl Recipe {
                 id: None,
                 output_item_id: 96613u32,
                 output_item_count: 1,
-                disciplines: vec![
-                    config::Discipline::Jeweler,
-                ],
+                disciplines: vec![config::Discipline::Jeweler],
                 ingredients: vec![
                     api::RecipeIngredient {
                         item_id: 96070u32,
@@ -474,7 +446,6 @@ impl Recipe {
                 ],
                 source: RecipeSource::Purchasable,
             },
-
             // TODO: general vendor interface, for money+item purchases, so I can avoid faking it
             // w/currency items
             // Bottle of Coconut Milk
@@ -482,9 +453,7 @@ impl Recipe {
                 id: None,
                 output_item_id: 87289u32,
                 output_item_count: 1,
-                disciplines: vec![
-                    config::Discipline::Merchant,
-                ],
+                disciplines: vec![config::Discipline::Merchant],
                 ingredients: vec![
                     api::RecipeIngredient {
                         item_id: 38030u32, // karma

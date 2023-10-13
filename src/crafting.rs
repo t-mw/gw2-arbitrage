@@ -1,9 +1,9 @@
 use crate::api;
 use crate::config;
-use crate::recipe::Recipe;
 use crate::item::Item;
 use crate::money::Money;
 use crate::profit;
+use crate::recipe::Recipe;
 
 use num_rational::Ratio;
 use num_traits::Zero;
@@ -71,7 +71,8 @@ pub fn calculate_estimated_min_crafting_cost(
         .map(|price| Money::from_copper(price.sells.unit_price as i32));
 
     let vendor_cost = item.and_then(|item| {
-        item.vendor_cost().map_or_else(|| item.token_value(), |cost| Some(cost.0))
+        item.vendor_cost()
+            .map_or_else(|| item.token_value(), |cost| Some(cost.0))
     });
     let cost = tp_cost.inner_min(crafting_cost).inner_min(vendor_cost)?;
 
@@ -107,15 +108,17 @@ pub struct CraftedItems {
 }
 
 impl CraftedItems {
-    pub fn crafting_steps(
-        &self,
-        recipes_map: &HashMap<u32, Recipe>,
-    ) -> Ratio<u32> {
-        let total_crafting_steps = self.crafted.iter().map(|(item_id, &count)| {
-            let recipe = recipes_map.get(item_id);
-            let output_item_count = recipe.map(|recipe| recipe.output_item_count).unwrap_or(1);
-            Ratio::new(count, output_item_count)
-        }).reduce(|total, count| total + count).unwrap();
+    pub fn crafting_steps(&self, recipes_map: &HashMap<u32, Recipe>) -> Ratio<u32> {
+        let total_crafting_steps = self
+            .crafted
+            .iter()
+            .map(|(item_id, &count)| {
+                let recipe = recipes_map.get(item_id);
+                let output_item_count = recipe.map(|recipe| recipe.output_item_count).unwrap_or(1);
+                Ratio::new(count, output_item_count)
+            })
+            .reduce(|total, count| total + count)
+            .unwrap();
         debug_assert!(total_crafting_steps.is_integer());
         total_crafting_steps
     }
@@ -139,8 +142,8 @@ impl CraftedItems {
                     // If we have no known recipes, assume we know none
                     if known_recipes
                         .as_ref()
-                            .filter(|recipes| recipes.contains(&id))
-                            .is_none()
+                        .filter(|recipes| recipes.contains(&id))
+                        .is_none()
                     {
                         unknown_recipes.insert(id);
                     }
@@ -155,7 +158,7 @@ impl CraftedItems {
         &self,
         item_id: u32,
         count: u32,
-        recipes_map: &'a HashMap<u32, Recipe>
+        recipes_map: &'a HashMap<u32, Recipe>,
     ) -> (u32, Vec<(u32, u32, &'a Recipe)>) {
         let mut ingredients = Vec::new();
         let recipe = recipes_map.get(&item_id).unwrap();
@@ -167,7 +170,8 @@ impl CraftedItems {
             // Let each recipe which uses something get full credit for it; then
             // only add it once to the crafting list once weights are determined
             ingredients.push((
-                ingredient.item_id, *crafted,
+                ingredient.item_id,
+                *crafted,
                 self.sort_ingredients(ingredient.item_id, *crafted, &recipes_map),
             ));
         }
@@ -185,8 +189,8 @@ impl CraftedItems {
         let mut sum = 0;
         let mut used = HashSet::new();
         for ingredient in ingredients.iter() {
-            sum += ingredient.2.0;
-            for &subingredient in ingredient.2.1.iter() {
+            sum += ingredient.2 .0;
+            for &subingredient in ingredient.2 .1.iter() {
                 if used.contains(&subingredient.0) {
                     continue;
                 }
@@ -200,8 +204,13 @@ impl CraftedItems {
 
     // TODO: use an iterator? - complains about lifetimes though, despite copy data output w/o references
     // TODO: unwrap??
-    pub fn sorted<'a>(&self, item_id: u32, recipes_map: &'a HashMap<u32, Recipe>) -> Vec<(u32, u32, &'a Recipe)> {
-        self.sort_ingredients(item_id, *self.crafted.get(&item_id).unwrap(), recipes_map).1
+    pub fn sorted<'a>(
+        &self,
+        item_id: u32,
+        recipes_map: &'a HashMap<u32, Recipe>,
+    ) -> Vec<(u32, u32, &'a Recipe)> {
+        self.sort_ingredients(item_id, *self.crafted.get(&item_id).unwrap(), recipes_map)
+            .1
     }
 }
 
@@ -224,39 +233,45 @@ pub fn calculate_precise_min_crafting_cost(
     let crafted_backup = context.items.crafted.clone();
 
     // Take from leftovers first if any
-    let (item_count, cost_of_leftovers_used) = if let Some((count, cost, source)) = context.items.leftovers.remove(&item_id) {
-        match count.cmp(&item_count) {
-            std::cmp::Ordering::Less => {
-                // Source is only checked against crafting to break out of profit loop; so prefer
-                // whichever other source
-                (item_count - count, cost * count)
-            },
-            std::cmp::Ordering::Equal => {
-                return Some(PreciseCraftingCost {
-                    cost: cost * item_count,
-                    source,
-                })
+    let (item_count, cost_of_leftovers_used) =
+        if let Some((count, cost, source)) = context.items.leftovers.remove(&item_id) {
+            match count.cmp(&item_count) {
+                std::cmp::Ordering::Less => {
+                    // Source is only checked against crafting to break out of profit loop; so prefer
+                    // whichever other source
+                    (item_count - count, cost * count)
+                }
+                std::cmp::Ordering::Equal => {
+                    return Some(PreciseCraftingCost {
+                        cost: cost * item_count,
+                        source,
+                    })
+                }
+                std::cmp::Ordering::Greater => {
+                    context
+                        .items
+                        .leftovers
+                        .insert(item_id, (count - item_count, cost, source));
+                    return Some(PreciseCraftingCost {
+                        cost: cost * item_count,
+                        source,
+                    });
+                }
             }
-            std::cmp::Ordering::Greater => {
-                context.items.leftovers.insert(item_id, (count - item_count, cost, source));
-                return Some(PreciseCraftingCost {
-                    cost: cost * item_count,
-                    source,
-                })
-            }
-        }
-    } else {
-        (item_count, Money::zero())
-    };
+        } else {
+            (item_count, Money::zero())
+        };
 
     // Craft x, but stash the rest; price is the fraction though
-    let crafting_count = Ratio::new(item_count, output_item_count).ceil().to_integer();
+    let crafting_count = Ratio::new(item_count, output_item_count)
+        .ceil()
+        .to_integer();
     let output_count = crafting_count * output_item_count;
 
     let leftovers_backup = context.items.leftovers.clone();
     let crafting_cost_per_item = recipe.and_then(|recipe| {
         if !opt.include_timegated && recipe.is_timegated() {
-            return None
+            return None;
         }
 
         let mut cost = Money::zero();
@@ -323,9 +338,14 @@ pub fn calculate_precise_min_crafting_cost(
         if output_count > item_count {
             // Should never have leftovers if we're crafting more
             debug_assert!(context.items.leftovers.get(&item_id) == None);
-            context.items.leftovers.insert(item_id, (
-                output_count - item_count, crafting_cost_per_item.unwrap(), Source::Crafting
-            ));
+            context.items.leftovers.insert(
+                item_id,
+                (
+                    output_count - item_count,
+                    crafting_cost_per_item.unwrap(),
+                    Source::Crafting,
+                ),
+            );
         }
     } else {
         // Un-mark ingredients for purchase
@@ -358,11 +378,17 @@ pub fn calculate_precise_min_crafting_cost(
         if purchase > item_count {
             // Should never still have leftovers if we're buying more
             debug_assert!(context.items.leftovers.get(&item_id) == None);
-            context.items.leftovers.insert(item_id, (purchase - item_count, cost_per_item, Source::Vendor));
+            context.items.leftovers.insert(
+                item_id,
+                (purchase - item_count, cost_per_item, Source::Vendor),
+            );
         }
     }
 
-    Some(PreciseCraftingCost { cost: cost + cost_of_leftovers_used, source })
+    Some(PreciseCraftingCost {
+        cost: cost + cost_of_leftovers_used,
+        source,
+    })
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -372,7 +398,6 @@ pub struct PurchasedIngredient {
     pub min_price: Money,
     pub total_cost: Money,
 }
-
 
 trait OptionInnerMin<T> {
     fn inner_min(self, other: Option<T>) -> Option<T>;

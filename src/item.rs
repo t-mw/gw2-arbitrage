@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use strum::Display;
 
+use crate::api::ApiItem;
 use crate::config;
 use crate::config::CONFIG;
 use crate::money::Money;
-use crate::api::ApiItem;
 
 // types for /items
 #[derive(Debug, Serialize, Deserialize)]
@@ -31,9 +31,7 @@ impl From<ApiItem> for Item {
         let details = match (&item.item_type, item.details) {
             (Type::Consumable, Some(details)) => Some(Details::Consumable(
                 serde_json::from_value(details)
-                    .unwrap_or_else(|err| panic!(
-                        "Error parsing API consumable item: {}", err
-                    )),
+                    .unwrap_or_else(|err| panic!("Error parsing API consumable item: {}", err)),
             )),
             _ => None,
         };
@@ -249,7 +247,9 @@ impl Item {
         match &self.id {
             // Base game
             // Empyreal Fragment, Dragonite Ore, Pile of Bloodstone Dust
-            46735 | 46733 | 46731 if CONFIG.ascended != None => Some(Money::from_copper(CONFIG.ascended.unwrap() as i32)),
+            46735 | 46733 | 46731 if CONFIG.ascended != None => {
+                Some(Money::from_copper(CONFIG.ascended.unwrap() as i32))
+            }
             // LW1
             // 50025 Blade Shard
             50025 => Some(Money::from_copper(0)),
@@ -283,17 +283,17 @@ impl Item {
                 } else {
                     None
                 }
-            },
+            }
 
             // Currency items, for recording vendor purchases
             // TODO: like tokens, these aren't vendor items
             // Order is Basic / Fine / Mwk
             38030 if CONFIG.karma != None => Some(Money::from_karma(1)), // Drip of liquid karma;
-                  // technically gives 150, but need 1
+            // technically gives 150, but need 1
             79222 | 79061 | 79163 if CONFIG.um != None => Some(Money::from_um(5)), // UM;
-                  // unspecified amount, but all purchases are divisible by 5, and consistent w/VM.
+            // unspecified amount, but all purchases are divisible by 5, and consistent w/VM.
             86384 if CONFIG.vm != None => Some(Money::from_vm(1)), // VM; this item
-                  // technically gives 5 VM. But not every VM purchase is divisible by 5.
+            // technically gives 5 VM. But not every VM purchase is divisible by 5.
             // 88926 - Provisioner Token
             96052 if CONFIG.rn != None => Some(Money::from_rn(1)), // Research Note
 

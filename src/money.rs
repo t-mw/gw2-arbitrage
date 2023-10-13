@@ -1,9 +1,9 @@
 use num_rational::{Rational32, Rational64};
-use num_traits::{Zero, ToPrimitive};
+use num_traits::{ToPrimitive, Zero};
 
-use std::fmt;
 use std::cmp;
 use std::convert::TryFrom;
+use std::fmt;
 
 use crate::config::CONFIG;
 
@@ -71,23 +71,31 @@ impl Money {
 
     fn copper_value(&self) -> Rational32 {
         self.copper
-         + self.karma * CONFIG.karma.unwrap_or(Rational32::zero())
-         + self.um * CONFIG.um.unwrap_or(Rational32::zero())
-         + self.vm * CONFIG.vm.unwrap_or(Rational32::zero())
-         + self.rn * CONFIG.rn.unwrap_or(Rational32::zero())
+            + self.karma * CONFIG.karma.unwrap_or(Rational32::zero())
+            + self.um * CONFIG.um.unwrap_or(Rational32::zero())
+            + self.vm * CONFIG.vm.unwrap_or(Rational32::zero())
+            + self.rn * CONFIG.rn.unwrap_or(Rational32::zero())
     }
     pub fn to_copper_value(&self) -> i32 {
         self.copper_value().ceil().to_integer()
     }
 
     fn fee(&self, percent: u8) -> Rational32 {
-        cmp::max(Rational32::from(1), self.copper * Rational32::new(percent as i32, 100)).round()
+        cmp::max(
+            Rational32::from(1),
+            self.copper * Rational32::new(percent as i32, 100),
+        )
+        .round()
     }
 
     pub fn trading_post_sale_revenue(self) -> Money {
         let fees = self.fee(TRADING_POST_EXCHANGE_FEE) + self.fee(TRADING_POST_LISTING_FEE);
         Money {
-            copper: if self.copper > fees { self.copper - fees } else { 0.into() },
+            copper: if self.copper > fees {
+                self.copper - fees
+            } else {
+                0.into()
+            },
             ..Default::default()
         }
     }
@@ -96,9 +104,12 @@ impl Money {
         let copper = self.copper_value();
         Money {
             copper: cmp::max(
-                (copper * Rational32::new(
-                    100, (100 - TRADING_POST_LISTING_FEE - TRADING_POST_EXCHANGE_FEE) as i32
-                )).ceil(),
+                (copper
+                    * Rational32::new(
+                        100,
+                        (100 - TRADING_POST_LISTING_FEE - TRADING_POST_EXCHANGE_FEE) as i32,
+                    ))
+                .ceil(),
                 copper + 2,
             ),
             ..Default::default()
@@ -268,7 +279,10 @@ impl std::iter::Sum for Money {
         let mut sink = Money::zero();
         let mut copper = Rational64::zero();
         for src in iter {
-            copper += Rational64::new(i64::from(*src.copper.numer()), i64::from(*src.copper.denom()));
+            copper += Rational64::new(
+                i64::from(*src.copper.numer()),
+                i64::from(*src.copper.denom()),
+            );
             sink.karma += src.karma;
             sink.um += src.um;
             sink.vm += src.vm;
@@ -283,7 +297,7 @@ impl std::iter::Sum for Money {
             i32::try_from(*copper.denom()).unwrap_or_else(|_| {
                 error = true;
                 i32::MAX
-            })
+            }),
         );
         if error {
             eprintln!("Overflow error: Money sum will be approximate");
@@ -305,7 +319,10 @@ impl fmt::Debug for Money {
             let silver = (copper - gold * 10000) / 100;
             let copper = copper - gold * 10000 - silver * 100;
 
-            result.field("copper", &format!("{}{}.{:02}.{:02}g", sign, gold, silver, copper));
+            result.field(
+                "copper",
+                &format!("{}{}.{:02}.{:02}g", sign, gold, silver, copper),
+            );
         }
 
         if self.karma != Rational32::zero() {
@@ -336,12 +353,7 @@ mod tests {
     fn sale_revenue() {
         // NOTE: all prices verified in game; game subtracts listing fee from
         // cash and exchange fee from revenue.
-        let prices = vec![
-            (2, 0),
-            (6, 4), (6 * 2, 10), (6 * 3, 15),
-            (51, 43),
-            (68, 58),
-        ];
+        let prices = vec![(2, 0), (6, 4), (6 * 2, 10), (6 * 3, 15), (51, 43), (68, 58)];
         for (sell, revenue) in prices {
             assert_eq!(
                 revenue,
@@ -357,17 +369,14 @@ mod tests {
         let epsilon = Money::from_copper(1);
         // Bunch of arbitrary primes
         let values = vec![
-            1, 2, 3, 17, 31, 37, 47, 53, 71, 101, 137,
-            3499, 9431,
-            100673, 199799,
-            1385507,
+            1, 2, 3, 17, 31, 37, 47, 53, 71, 101, 137, 3499, 9431, 100673, 199799, 1385507,
             24710753,
         ];
         for value in values {
             let price = Money::from_copper(value);
-            let breakeven = Money::from_copper(
-                price.trading_post_listing_price().to_copper_value()
-            ).trading_post_sale_revenue();
+            let breakeven =
+                Money::from_copper(price.trading_post_listing_price().to_copper_value())
+                    .trading_post_sale_revenue();
             assert!(price <= breakeven && breakeven <= price + epsilon);
         }
     }
