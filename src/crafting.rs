@@ -415,7 +415,7 @@ where
         }
     }
 }
-
+#[allow(dead_code)]
 trait DivCeil {
     fn div_ceil(&self, other: Self) -> Self;
 }

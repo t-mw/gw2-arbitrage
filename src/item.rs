@@ -71,6 +71,7 @@ pub enum Type {
     Trophy,
     UpgradeComponent,
     Weapon,
+    Relic,
     Mwcc, // TODO: From SoTO, will probably be renamed eventually
 }
 

@@ -558,7 +558,7 @@ fn print_item_list(
 
     Ok(())
 }
-
+#[allow(dead_code)]
 trait DivCeil {
     fn div_ceil(&self, other: Self) -> Self;
 }
