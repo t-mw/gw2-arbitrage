@@ -415,12 +415,3 @@ where
         }
     }
 }
-#[allow(dead_code)]
-trait DivCeil {
-    fn div_ceil(&self, other: Self) -> Self;
-}
-impl DivCeil for u32 {
-    fn div_ceil(&self, other: Self) -> Self {
-        (self + other - 1) / other
-    }
-}
