@@ -229,10 +229,12 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
     // NB: two reagents are purchased from the tp because that amount appears first in the recipe
     // and the average cost for two items is lower than from the vendor.
     // ideally only one reagent would be purchased from the tp, but that would introduce complexity.
-    let thermocatalytic_reagent_crafting_cost = (120 + 178) + 4 * 150;
-    let crafting_cost = Money::from_copper(
-        800000 + 2 * 1000000 + 5 * 1100000 + thermocatalytic_reagent_crafting_cost,
-    );
+    // +14 upgrade costs, then TP-purchased reagents used in the first two crafts,
+    // then the fractional vendor cost of the four remaining reagents bought in bundles of 10.
+    let plus_14_crafting_cost = Money::from_copper(800000 + 2 * 1000000 + 5 * 1100000);
+    let tp_reagent_cost = Money::from_copper(120 + 178);
+    let vendor_reagent_cost = (Money::from_copper(1496) / 10) * 4;
+    let crafting_cost = plus_14_crafting_cost + tp_reagent_cost + vendor_reagent_cost;
     let mut crafted = HashMap::new();
     crafted.insert(plus_14_item_id + 1, 4);
     crafted.insert(plus_16_item_id, 2);
@@ -251,8 +253,10 @@ fn calculate_crafting_profit_agony_infusion_profitable_test() {
                 - crafting_cost,
             max_sell: Money::from_copper(7982220),
             min_sell: Money::from_copper(7982200),
-            // (1100000 * 4 + 3 * 150) / (85 / 100)
-            breakeven: Money::from_copper(5177000),
+            // (4 * 1100000 + 3 * 1496 / 10) / (85 / 100)
+            breakeven: (Money::from_copper(1100000 * 4)
+                + (Money::from_copper(1496) / 10) * 3)
+                .trading_post_listing_price(),
             crafting_steps: 6,
             crafted_items: CraftedItems { crafted, leftovers },
         })
